@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Display Bridge — live Witchcure preview</title>
+<style>body{max-width:950px;margin:30px auto;padding:20px;background:#171b24;color:#eee;font:16px/1.5 system-ui}a{color:#acd4ff}</style>
+<h1>Witchcure preview</h1>
+<p>This preview uses the current renderer and neutral test fixture. Start <code>node tests/integration-server.mjs &lt;SillyTavern directory&gt;</code>, then open <code>/extension/witchcure-preview.html</code> at its printed address. <a href="/fixtures/harness.html">Run all browser checks</a>.</p>
+<p id="status">Waiting for the local integration server.</p><main id="sample"></main>
+<script src="/vendor/css.js"></script>
+<script type="module">
+import {compileWitchcure} from './adapters/witchcure.js';
+import {createWitchcure} from './components/witchcure.js';
+try {
+ const source=await(await fetch('./tests/browser/witchcure-fixture.json')).json();
+ let mode='roster';
+ const widget=createWitchcure({initialMode:mode},{witchcure:compileWitchcure(source,window.cssTools),resolver:()=>({status:'missing'}),getWitchMode:()=>mode,setWitchMode:value=>{mode=value;return true;}});
+ document.getElementById('sample').append(widget.host);
+ document.getElementById('status').textContent='Current renderer loaded. Artwork is intentionally represented by named placeholders.';
+}catch(error){document.getElementById('status').textContent='Preview unavailable: '+error.message;}
+</script></html>

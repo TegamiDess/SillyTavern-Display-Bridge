@@ -1,0 +1,8 @@
+{
+  "kind": "display-bridge-profile",
+  "schemaVersion": 1,
+  "adapters": [
+    { "id": "media-panel", "version": 1 },
+    { "id": "gallery", "version": 1 }
+  ]
+}

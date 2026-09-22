@@ -1,0 +1,66 @@
+{
+  "kind": "display-bridge-profile",
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "portrait-dialogue",
+      "version": 5,
+      "source": {
+        "format": {
+          "kind": "scene-fragments",
+          "backgrounds": [
+            "numbered-five"
+          ],
+          "castFields": 2,
+          "counts": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "dialogueOpeners": [
+            "double"
+          ],
+          "textTags": true
+        },
+        "variantLabel": "Appearance",
+        "variants": [
+          {
+            "id": "normal",
+            "label": "Normal",
+            "images": {}
+          },
+          {
+            "id": "swapped",
+            "label": "Swap guides",
+            "images": {
+              "guide": "curator",
+              "guide-smile": "curator-smile",
+              "curator": "guide",
+              "curator-smile": "guide-smile"
+            }
+          }
+        ],
+        "theme": {
+          "accent": "#8499b1",
+          "background": "#26313e",
+          "text": "#f2f4f8",
+          "pattern": "plain",
+          "position": "center"
+        },
+        "appearance": {
+          "allowOriginal": false,
+          "defaultVariant": "normal"
+        },
+        "portraitLabels": {
+          "guide": "Alex",
+          "guide-smile": "Alex (hover)",
+          "curator": "Robin",
+          "curator-smile": "Robin (hover)",
+          "room": "Scene background"
+        }
+      }
+    }
+  ]
+}

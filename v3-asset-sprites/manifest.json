@@ -1,0 +1,11 @@
+{
+  "display_name": "V3 Asset Sprites",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "anonymous",
+  "version": "0.6.4",
+  "license": "AGPL-3.0-only"
+}

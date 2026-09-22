@@ -1,0 +1,55 @@
+{
+  "kind": "display-bridge-profile",
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "portrait-dialogue",
+      "version": 1,
+      "source": {
+        "format": {
+          "kind": "json",
+          "open": "<scene>",
+          "close": "</scene>",
+          "fields": {
+            "speaker": "person",
+            "dialogue": "line",
+            "portrait": "sprite",
+            "time": "clock",
+            "location": "venue"
+          }
+        },
+        "variantLabel": "Uniform",
+        "variants": [
+          {
+            "id": "work",
+            "label": "Workshop",
+            "images": {
+              "robin": "robin-work"
+            }
+          },
+          {
+            "id": "formal",
+            "label": "Formal",
+            "images": {
+              "robin": "robin-formal"
+            }
+          },
+          {
+            "id": "outdoors",
+            "label": "Outdoors",
+            "images": {
+              "robin": "robin-outdoors"
+            }
+          }
+        ],
+        "theme": {
+          "accent": "#a5b4fc",
+          "background": "#19243b",
+          "text": "#f5f7ff",
+          "pattern": "plain",
+          "position": "right"
+        }
+      }
+    }
+  ]
+}

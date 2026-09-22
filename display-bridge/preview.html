@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Display Bridge · Sample</title>
+<style>
+body { margin: 0; background: #101318; color: #e6eaf2; font: 16px/1.6 system-ui, sans-serif; }
+main { max-width: 780px; margin: 48px auto; padding: 24px; }
+.eyebrow { color: #9cbbe5; font-size: 12px; letter-spacing: .14em; }
+h1 { font-size: 36px; letter-spacing: -.04em; margin: 6px 0; }
+p { color: #b7c1d4; }
+.demo { background: #1b202a; border: 1px solid #333e50; padding: 24px; border-radius: 16px; }
+</style>
+<main><div class="eyebrow">DISPLAY BRIDGE / FIRST PREVIEW</div><h1>A stream panel, inside the conversation.</h1>
+<p>A neutral sample of the supported layout. Hover over the image area, or use “Show chat”. This preview intentionally has no asset provider.</p>
+<div class="demo"><p>Ordinary message text stays above and below the panel.</p><div id="sample"></div><p>The conversation continues here.</p></div>
+</main>
+<script type="module">
+import { SAMPLE } from './core/bridge.js';
+import { makePlan } from './core/pipeline.js';
+import { createMediaPanel } from './components/media-panel.js';
+document.getElementById('sample').append(createMediaPanel(makePlan(SAMPLE).items[0], {}).host);
+</script></html>

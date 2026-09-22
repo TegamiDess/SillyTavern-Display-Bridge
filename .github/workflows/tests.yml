@@ -1,0 +1,14 @@
+name: Unit tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix display-bridge --ignore-scripts
+      - run: node --test --test-isolation=none display-bridge/tests/*.test.js

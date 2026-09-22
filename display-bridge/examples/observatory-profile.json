@@ -1,0 +1,50 @@
+{
+  "kind": "display-bridge-profile",
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "portrait-dialogue",
+      "version": 1,
+      "source": {
+        "format": {
+          "kind": "fields",
+          "open": "[Scene|",
+          "close": "]",
+          "fields": {
+            "speaker": "speaker",
+            "dialogue": "text",
+            "portrait": "image",
+            "time": "time",
+            "day": "day",
+            "date": "date",
+            "location": "place"
+          }
+        },
+        "variantLabel": "Clothing",
+        "variants": [
+          {
+            "id": "coat",
+            "label": "Field coat",
+            "images": {
+              "alex": "alex-coat"
+            }
+          },
+          {
+            "id": "casual",
+            "label": "Casual",
+            "images": {
+              "alex": "alex-casual"
+            }
+          }
+        ],
+        "theme": {
+          "accent": "#ddae46",
+          "background": "#fff8e6",
+          "text": "#493a22",
+          "pattern": "gingham",
+          "position": "center"
+        }
+      }
+    }
+  ]
+}

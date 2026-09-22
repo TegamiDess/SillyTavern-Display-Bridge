@@ -1,0 +1,11 @@
+{
+  "display_name": "Display Bridge",
+  "loading_order": 110,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Display Bridge contributors",
+  "version": "0.14.2",
+  "license": "AGPL-3.0-only"
+}

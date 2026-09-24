@@ -1,0 +1,40 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Snapshot renderer check</title>
+<link rel="stylesheet" href="/extension/style.css">
+<style>body{background:#202630;color:#eee;font:16px/1.5 system-ui;margin:20px}#chat{width:600px}.mes{width:600px}.mes_text{padding:16px}canvas{max-width:100%;border:1px solid #888}button{padding:10px}#capture{background:#202630}#result{max-width:620px}</style>
+<h1>Snapshot renderer check</h1><p>Neutral fixtures only. This optional test loads the same external html2canvas module as Snapshot 3.3.0. No chat data is sent to it.</p>
+<button id="run">Capture neutral panels</button><p id="status">Ready</p><div id="chat"><div class="mes"><div class="mes_text"></div></div></div><div id="result"></div>
+<script type="module">
+import {cloneSnapshotMessage,prepareSnapshot} from '/extension/integrations/snapshot.js';
+import {createPortraitDialogue} from '/extension/components/portrait-dialogue.js';
+import {createMediaPanel} from '/extension/components/media-panel.js';
+import {DEFAULT_PRESET,parsePortraitDialogue} from '/extension/adapters/portrait-dialogue.js';
+import {makePlan} from '/extension/core/pipeline.js';
+import {createImageViewer} from '/extension/components/image-viewer.js';
+const root=document.querySelector('.mes_text');
+const config={...structuredClone(DEFAULT_PRESET),format:{kind:'tagged',entries:[{kind:'dialogue',tag:'guide',speaker:'Alex',portrait:'guide',quoted:true}]}};
+const panel=createPortraitDialogue(parsePortraitDialogue('<guide>"Ohayou!" (Good morning, Alex!)</guide>',config).blocks[0],{resolver:()=>({status:'resolved',url:'/user/files/snapshot-portrait.svg'})});
+root.append(panel.host);
+const ordinary=document.createElement('img');ordinary.src='/user/files/snapshot-portrait.svg';ordinary.alt='Neutral compact portrait';root.append(ordinary);
+const viewer=createImageViewer({enabled:()=>true,scope:()=> 'snapshot'});viewer.refresh();
+const stream=makePlan('[Assets:neutral|Chat:<p><span>Alex</span><span>Ready for the snapshot.</span></p>|Time:18:20|AkaChat:Neutral stream]').items[0];
+const streamPanel=createMediaPanel(stream,{resolver:()=>({status:'resolved',url:'/user/files/snapshot-portrait.svg'})});root.append(streamPanel.host);
+document.getElementById('run').onclick=async()=>{
+ const status=document.getElementById('status');status.textContent='Capturing…';let container;
+ try{
+  const {default:html2canvas}=await import('https://esm.sh/@wtto00/html2canvas');
+  await Promise.all([...root.querySelectorAll('img'),...panel.host.shadowRoot.querySelectorAll('img'),...streamPanel.host.shadowRoot.querySelectorAll('img')].filter(i=>i.src).map(i=>i.decode()));
+  const original=root.innerHTML,shadow=panel.host.shadowRoot.innerHTML;
+  container=document.createElement('div');container.id='capture';container.style.width='600px';
+  const clone=cloneSnapshotMessage(root.closest('.mes'));
+  clone.querySelector('.mes_text').innerHTML=clone.querySelector('.mes_text').innerHTML.replaceAll('Alex','Anon');container.append(clone);document.body.append(container);
+  const report=await prepareSnapshot(container);
+  const canvas=await html2canvas(container,{backgroundColor:'#202630',useCORS:true,scale:1,logging:false,width:container.scrollWidth});
+  const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+  let blue=0,skin=0;for(let i=0;i<pixels.length;i+=4){if(pixels[i]===100&&pixels[i+1]===140&&pixels[i+2]===220)blue++;if(pixels[i]===220&&pixels[i+1]===180&&pixels[i+2]===150)skin++;}
+  if(blue<1000||skin<1000)throw Error('Portrait colours missing from PNG');
+  if(root.innerHTML!==original||panel.host.shadowRoot.innerHTML!==shadow)throw Error('Live chat changed');
+  document.getElementById('result').replaceChildren(canvas);
+  status.textContent=`PASS: ${report.images} embedded images; ${canvas.width} × ${canvas.height} PNG; portrait colours present; live chat unchanged.`;
+ }catch(error){status.textContent='FAIL: '+error.message;console.error(error);}finally{container?.remove();}
+};
+</script></html>

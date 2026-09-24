@@ -1,0 +1,216 @@
+{
+  "kind": "display-bridge-profile",
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "portrait-dialogue",
+      "version": 8,
+      "source": {
+        "format": {
+          "kind": "scene-fragments",
+          "backgrounds": [
+            "numbered-four"
+          ],
+          "castFields": 4,
+          "counts": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "dialogueOpeners": [
+            "double"
+          ],
+          "textTags": true,
+          "details": {
+            "version": 1,
+            "castMetadata": true,
+            "layers": true,
+            "periodAssets": {
+              "sky": "night"
+            },
+            "offsetAliases": {
+              "@guide": "20%",
+              "@curator": "20%"
+            }
+          }
+        },
+        "variantLabel": "Appearance",
+        "variants": [],
+        "theme": {
+          "accent": "#8499b1",
+          "background": "#26313e",
+          "text": "#f2f4f8",
+          "pattern": "plain",
+          "position": "center"
+        },
+        "sceneControls": {
+          "version": 1,
+          "roster": {
+            "title": "Guide information",
+            "entities": [
+              {
+                "id": "alex",
+                "label": "Alex",
+                "portrait": "guide",
+                "badges": [
+                  {
+                    "id": "friend",
+                    "label": "Friend",
+                    "image": "guide-smile"
+                  }
+                ]
+              },
+              {
+                "id": "river",
+                "label": "River",
+                "portrait": "curator"
+              }
+            ]
+          },
+          "music": {
+            "title": "Observatory music",
+            "volume": 0.2,
+            "loop": false,
+            "tracks": [
+              {
+                "id": "evening",
+                "label": "Evening study",
+                "asset": "evening-chime"
+              }
+            ]
+          }
+        },
+        "sceneState": {
+          "version": 1,
+          "variables": {
+            "score": {
+              "type": "number",
+              "initial": 10,
+              "min": 0,
+              "max": 100
+            },
+            "place": {
+              "type": "string",
+              "initial": "Observatory"
+            },
+            "relationship": {
+              "type": "enum",
+              "initial": "Colleague",
+              "values": [
+                "Colleague",
+                "Friend"
+              ]
+            },
+            "badge": {
+              "type": "enum",
+              "initial": null,
+              "values": [
+                "friend"
+              ]
+            },
+            "track": {
+              "type": "enum",
+              "initial": null,
+              "values": [
+                "evening"
+              ]
+            }
+          },
+          "rules": [
+            {
+              "template": "<❤{entity}+{value}>",
+              "op": "add",
+              "targets": {
+                "alex": "score"
+              }
+            },
+            {
+              "template": "<❤{entity}-{value}>",
+              "op": "subtract",
+              "targets": {
+                "alex": "score"
+              }
+            },
+            {
+              "template": "<MOVE_{entity}_{value}>",
+              "op": "set",
+              "targets": {
+                "alex": "place"
+              }
+            },
+            {
+              "template": "<relationship={entity}={value}>",
+              "op": "set",
+              "targets": {
+                "alex": "relationship"
+              }
+            }
+          ],
+          "derive": [
+            {
+              "from": "relationship",
+              "to": "badge",
+              "values": {
+                "Friend": "friend"
+              }
+            }
+          ],
+          "roster": [
+            {
+              "id": "alex",
+              "score": "score",
+              "location": "place",
+              "relationship": "relationship",
+              "badge": "badge"
+            }
+          ],
+          "track": "track",
+          "backgroundTracks": {
+            "room": "evening",
+            "courtyard": null
+          },
+          "context": {
+            "title": "Current scene facts",
+            "fields": [
+              {
+                "key": "score",
+                "label": "Alex score"
+              },
+              {
+                "key": "place",
+                "label": "Alex location"
+              },
+              {
+                "key": "relationship",
+                "label": "Alex relationship"
+              }
+            ]
+          },
+          "startup": {
+            "marker": "<scene-start>",
+            "choices": [
+              {
+                "id": "library",
+                "label": "Library visit",
+                "text": "The library opens for the evening.\n<#1><img src=\"room\"_\"sky\"_\"weather\"_\"18:30\"><2><img=\"guide\"_\"guide-smile\"><ct=\"0px\"_\"A guide\"_\"On duty\"_\"Ready\"><img=\"curator\"_\"curator-smile\"><ct=\"0px\"_\"A guide\"_\"On duty\"_\"Ready\"><div><div tn=\"1\"><text=\"dialogue\">Welcome to the observatory.</text><text=\"narration\">The guides prepare the telescope.</text></div></div>",
+                "values": {
+                  "place": "Library"
+                }
+              },
+              {
+                "id": "observatory",
+                "label": "Observatory visit",
+                "text": "The observatory opens for the evening.\n<#1><img src=\"room\"_\"sky\"_\"weather\"_\"18:30\"><2><img=\"guide\"_\"guide-smile\"><ct=\"0px\"_\"A guide\"_\"On duty\"_\"Ready\"><img=\"curator\"_\"curator-smile\"><ct=\"0px\"_\"A guide\"_\"On duty\"_\"Ready\"><div><div tn=\"1\"><text=\"dialogue\">Welcome to the observatory.</text><text=\"narration\">The guides prepare the telescope.</text></div></div>",
+                "values": {
+                  "place": "Observatory"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

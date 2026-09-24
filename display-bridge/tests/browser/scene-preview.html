@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>Scene presentation preview</title>
+<style>body{background:#202630;color:#e9edf4;font:16px system-ui;margin:24px auto;max-width:880px;padding:0 16px}h1{font-size:22px}button,select{font:inherit;padding:6px}#status{font-size:14px}</style>
+<h1>Scene presentation — neutral preview</h1>
+<p>Hover over a figure or use Tab for its alternate image and tooltip. Dialogue supports emphasis; scene layers stay inside the panel.</p>
+<label>Source family <select id="family"><option value="four">Four fields: sky and effect layers</option><option value="five">Five fields: period, date and location</option></select></label>
+<p id="status"></p><main id="preview"></main>
+<script type="module">
+import {detailedSceneRules,sceneMessage} from './scene-fixture.js';
+import {discoverProfile} from '/extension/core/profiles.js';
+import {parsePortraitDialogue} from '/extension/adapters/portrait-dialogue.js';
+import {createPortraitDialogue} from '/extension/components/portrait-dialogue.js';
+const svg=body=>'data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300">'+body+'</svg>');
+const picture=(colour,smile)=>svg('<circle cx="100" cy="60" r="42" fill="#dfbc9e"/><path d="M40 115 H160 L190 300 H10Z" fill="'+colour+'"/><circle cx="85" cy="55" r="4"/><circle cx="115" cy="55" r="4"/>'+(smile?'<path d="M80 75 Q100 95 120 75" fill="none" stroke="#433" stroke-width="3"/>':''));
+const assets={guide:picture('#738cc0',false),'guide-smile':picture('#738cc0',true),curator:picture('#71a99d',false),'curator-smile':picture('#71a99d',true),room:svg('<path d="M0 140 H200 V300 H0Z" fill="#325368"/><path d="M0 160H55V270H0Z M145 160H200V270H145Z" fill="#192c40"/>'),sky:svg('<path d="M0 0H200V300H0Z" fill="#779bb7"/>'),weather:svg('<circle cx="160" cy="30" r="12" fill="#fff3c0" opacity=".7"/>')};
+function render(){const family=document.querySelector('#family').value,profile=discoverProfile({sourceVersion:1,ruleOptionsVersion:1,risuai:{customScripts:detailedSceneRules(family)}}).profile;
+const message=sceneMessage(family).replace('Welcome to the observatory.','<strong>Welcome</strong> to the *observatory*. Hover over a guide to see their notes.');
+const widget=createPortraitDialogue(parsePortraitDialogue(message,profile.adapters[0].source).blocks[0],{resolver:(_,ref)=>({status:assets[ref]?'resolved':'missing',url:assets[ref]??null})});document.querySelector('#preview').replaceChildren(widget.host);document.querySelector('#status').textContent='Adapter v'+profile.adapters[0].version+' · neutral local assets · no story updates or audio.';}
+document.querySelector('#family').addEventListener('change',render);render();
+</script>

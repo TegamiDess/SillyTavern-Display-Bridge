@@ -47,12 +47,15 @@ export function createCompatibilityView(recover) {
         const panels=section('Panel readiness and actions');
         lines(panels,report.panels.map(p=>`${p.name}: ${p.state}. ${p.reason}`));
         lines(panels,report.actions);
+        if(report.sceneState){const s=report.sceneState;lines(panels,[`Conversation state: ${s.status}. ${s.issue??'Reviewed updates are saved in this chat.'}`,`Model context: ${s.modelContext?'configured; declared facts are sent with generation':'not configured'}. Startup choice: ${s.startup?'configured':'not configured'}. Use Conversation state to initialize or rebuild after reviewing changes.`]);}
         if(report.pending) host.append(node('p','An imported profile is waiting for review. Use Apply imported UI profile or Keep current panels above.'));
         const images=section('Images and image rules');
         const provider=report.provider;
         if(provider.status!=='available') images.append(node('p',`Image report: ${provider.status}. Install the matching V3 Asset Sprites release for recovery and named-image details.`));
         else {
             const a=provider.assets,r=provider.regex;
+            if(provider.audio?.declared)images.append(node('p',`Local audio: ${provider.audio.declared} declared; ${provider.audio.missing.length} unresolved (up to 100 shown). Reattach the original archive to recover unavailable audio bytes.`));
+            if(provider.audio?.missing?.length)lines(images,provider.audio.missing.map(n=>'Missing audio: '+n));
             images.append(node('p',`Image mapping ${provider.enrolled?'enabled':'not enabled'}; ${a.mapped}/${a.declared} declared images mapped. Mapping does not verify that files still load.`));
             if(a.missingCount) lines(images,[`${a.missingCount} declared images have no usable mapping (showing up to 100):`,...a.missing]);
             images.append(node('p',`Native regex permission: ${r.allowed?'allowed':'not active'}. Regex extension: ${r.extensionEnabled?'on':'off'}. Image rules: ${r.installed} installed; ${r.active} approved and active; ${r.disabled} disabled; ${r.unapproved} modified or unapproved.`));
@@ -68,6 +71,7 @@ export function createCompatibilityView(recover) {
         if(report.recoveryAvailable) {
             action(images,'Rescan local images','rescan');action(images,'Review / reinstall image rules','resync');
         }
+        if(report.discovery?.sceneAssembly?.length){const coverage=section('Scene import coverage');lines(coverage,report.discovery.sceneAssembly.map(c=>`${c.feature}: ${c.status}. ${c.reason}`));}
         const discovery=section('Imported rules and effects');
         if(!report.discovery) discovery.append(node('p','Per-rule results were not recorded. Attach the original card to generate them.'));
         else {

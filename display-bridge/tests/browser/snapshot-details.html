@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Snapshot collapsed reasoning regression</title>
+<style>body{background:#202630;color:#eee;font:16px/1.5 sans-serif;margin:20px}.mes{width:600px;padding:16px;box-sizing:border-box;background:#202630}code{background:#050505;color:#eee;padding:3px}img{width:70px;height:105px}canvas{max-width:600px;border:1px solid #888}#results{display:flex;flex-wrap:wrap;gap:16px}</style>
+<h1>Snapshot collapsed reasoning regression</h1><p>Neutral fixture. Loads the same html2canvas module as Snapshot 3.3.0 when clicked.</p>
+<button id="run">Compare captures</button><p id="status">Ready</p>
+<div id="chat"><div class="mes"><details class="mes_reasoning_details"><summary>Reasoning</summary><div class="mes_reasoning"><ul><li>Choose <code>neutral_portrait_one</code></li><li>Then <code>neutral_portrait_two</code></li><li>Finally <code>neutral_portrait_three</code></li></ul></div></details><div class="mes_text"><p>The guide opens the observatory.</p><img src="/user/files/snapshot-portrait.svg" alt="neutral_portrait_one"><p>“The telescope is ready.”</p><img src="/user/files/snapshot-portrait.svg" alt="neutral_portrait_two"><p>The next guide joins the tour.</p><img src="/user/files/snapshot-portrait.svg" alt="neutral_portrait_three"></div></div></div><div id="results"></div>
+<script type="module">
+import {cloneSnapshotMessage,prepareSnapshot} from '/extension/integrations/snapshot.js';
+document.querySelector('#run').onclick=async()=>{
+ const status=document.querySelector('#status'),source=document.querySelector('.mes'),original=source.innerHTML;
+ status.textContent='Rendering…';document.querySelector('#results').replaceChildren();
+ try{
+  const {default:html2canvas}=await import('https://esm.sh/@wtto00/html2canvas');
+  const canvases=[];
+  for(const mode of ['Legacy clone','Expected visible contents','Display Bridge']){
+   const copy=mode==='Display Bridge'?cloneSnapshotMessage(source):source.cloneNode(true);
+   if(mode==='Expected visible contents')copy.querySelector('.mes_reasoning').remove();
+   document.body.append(copy);
+   try{await prepareSnapshot(copy);const canvas=await html2canvas(copy,{backgroundColor:'#202630',scale:1,logging:false,useCORS:true});canvases.push(canvas);const figure=document.createElement('figure'),caption=document.createElement('figcaption');caption.textContent=mode;figure.append(caption,canvas);document.querySelector('#results').append(figure);}finally{copy.remove();}
+  }
+  const pixels=canvases.map(c=>c.getContext('2d').getImageData(0,0,c.width,c.height).data);
+  const difference=(a,b)=>{let n=0;for(let i=0;i<a.length;i+=4)if(a[i]!==b[i]||a[i+1]!==b[i+1]||a[i+2]!==b[i+2]||a[i+3]!==b[i+3])n++;return n;};
+  const legacy=difference(pixels[0],pixels[1]),fixed=difference(pixels[2],pixels[1]);
+  if(source.innerHTML!==original)throw Error('Live source changed');
+  status.textContent=`${legacy>0&&fixed===0?'PASS':'CHECK'}: legacy differs from visible-only reference by ${legacy} pixels; Display Bridge differs by ${fixed} pixels. Live source unchanged.`;
+ }catch(e){status.textContent='FAIL: '+e.message;console.error(e);}
+};
+</script></html>

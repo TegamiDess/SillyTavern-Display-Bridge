@@ -1,5 +1,12 @@
+import { createSceneAudio } from './scene-audio.js';
+import { createChatMusic } from '../components/chat-music.js';
+import { createChatInformation } from '../components/chat-information.js';
+import { storySnapshot } from '../adapters/scene-state.js';
+import { createStoryState } from '../integrations/story-state.js';
+import { createChatDock } from '../components/chat-dock.js';
 import { preservePortraitMappings } from '../adapters/portrait-mappings.js';
 import { createImageViewer } from '../components/image-viewer.js';
+import { snapshot } from '../integrations/snapshot.js';
 import { validatePortraitPreset, portraitActions } from '../adapters/portrait-dialogue.js';
 import { initialState } from './actions.js';
 import { createPresetEditor } from '../components/preset-editor.js';
@@ -16,6 +23,7 @@ export const SAMPLE = '[Assets:sample.webp|Chat:<p><span>Alex</span><span>Hello!
 
 export function createDisplayBridge({ getContext, extensionSettings, saveSettings, cssParser, rememberChat = () => {}, afterRender = () => {} }) {
     const states = new Map();
+    const sceneAudio=createSceneAudio(),chatMusic=createChatMusic(sceneAudio),chatInformation=createChatInformation();let generationBusy=false;
     const imageViewer=createImageViewer({enabled:()=>settings().compactImages===true,scope:()=>character()?chatScope(character().avatar):null});
     let plans = new WeakMap();
     const errors = new Map();
@@ -29,6 +37,8 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     const subscriptions = [];
     const preferences=createPreferences({state:()=>settings().presentation??={},save:saveSettings});
     const lifecycle=createCharacterLifecycle({state:()=>settings().lifecycle??={},save:saveSettings,retire:retireCharacter,rename:renameCharacter});
+    const story=createStoryState({getContext,scope:()=>{const c=character();return c&&enabled(c.avatar)&&profile(c.avatar).adapters?.includes('portrait-dialogue')?{identity:lifecycle.ensure(c)?.id,config:profile(c.avatar).portraitSource}:null;},changed:()=>{if(profile(character()?.avatar).portraitSource?.sceneState){plans=new WeakMap();schedule();}}});
+    const chatDock=createChatDock({rebuild:()=>story.rebuild(story.read()?.choice??null)});
 
     function retireCharacter(avatar,reason) {
         const s=settings(),old=Object.hasOwn(s.profiles,avatar)?s.profiles[avatar]:null;
@@ -101,9 +111,10 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         const recent = depth < 2;
         let cached = plans.get(message);
         if (!cached || cached.source !== source || cached.avatar !== avatar || cached.stream !== stream || cached.gallery !== gallery || cached.portrait !== portrait || cached.witchcure !== witchcure || ((witchcure || portrait) && cached.depth !== depth) || cached.latestAssistant!==latestAssistant) {
-            cached = { source, avatar, stream, gallery, witchcure, portrait, depth, latestAssistant, plan: makePlan(source, { stream, gallery, witchcure, portrait, recent, statusRecent: depth < 6, depth, latestAssistant }) };
+            cached = { source, avatar, stream, gallery, witchcure, portrait, depth, latestAssistant, plan: makePlan(source, { stream, gallery, witchcure, portrait, recent, statusRecent: depth < 6, depth, latestAssistant, storyUpdates:portrait?.sceneState&&message.mes===source?story.read()?.views.get(message)?.cleanup??[]:[] }) };
             plans.set(message, cached);
         }
+        if(portrait?.sceneState&&!cached.storyProjected){story.project(message,cached.plan);cached.storyProjected=true;}
         return cached.plan;
     }
     function eligible(message, avatar) {
@@ -118,6 +129,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         return state && state.widgets.length > 0 && state.widgets.every(widget => root.contains(widget.host));
     }
     function restore(root, state) {
+        state.widgets.forEach(w=>w.dispose?.());
         // Restore actual native DOM nodes, preserving their listeners and keeping
         // message.mes and display_text untouched, including message zero macros.
         if (intact(root, state)) {
@@ -175,10 +187,11 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
                 const record=()=>chat?preferences.getPreset(identity,chat,signature):null;
                 const read=()=>{const saved=record()?.state;if(!saved)return chat?fallback:ephemeral.read();try{return reduceAction(definition,saved,'choose-'+saved.variant);}catch{return fallback;}};
                 const write=(state,previous)=>{preferences.setPreset(identity,chat,{signature,state,previous});rememberChat(avatar,chat);schedule();};
-                presetState={read,dispatch(action){if(!current())return false;const before=read(),next=reduceAction(definition,before,action);if(chat)write(next,before);else{temporaryPrevious=before;ephemeral.dispatch(action);}return true;},canUndo:()=>!!(chat?record()?.previous:temporaryPrevious),undo(){if(!current())return false;const old=record();if(chat&&old?.previous){write(old.previous,null);return true;}if(!chat&&temporaryPrevious){const previous=temporaryPrevious;ephemeral.dispatch('reset');for(const k of ['visual','image','dialogue','console'])if(previous[k]!==fallback[k])ephemeral.dispatch(k);ephemeral.dispatch('choose-'+previous.variant);temporaryPrevious=null;return true;}return false;}};
+                presetState={read,dispatch(action){if(!current())return false;const before=read(),next=reduceAction(definition,before,action);if(chat)write(next,before);else{temporaryPrevious=before;ephemeral.dispatch(action);}return true;},canUndo:()=>!!(chat?record()?.previous:temporaryPrevious),undo(){if(!current())return false;const old=record();if(chat&&old?.previous){write(old.previous,null);return true;}if(!chat&&temporaryPrevious){const previous=temporaryPrevious;ephemeral.dispatch('reset');for(const k of ['visual','image','dialogue','console',...(preset.sceneControls?.music?['music']:[])])if(previous[k]!==fallback[k])ephemeral.dispatch(k);ephemeral.dispatch('choose-'+previous.variant);if(preset.sceneControls?.music)ephemeral.dispatch('volume-'+previous.volume);temporaryPrevious=null;return true;}return false;}};
             }
             const rendered = renderPlan(plan, format(plan.source, message, id), {
                 avatar,
+                mediaFor:data=>({external:true,externalRoster:!!data.config.sceneState&&data.config.format?.details?.layers===true}),
                 presetState,
                 witchcure: witchFor(avatar)?.value,
                 getWitchMode: () => witchMode.read().mode === 'auto' ? null : witchMode.read().mode,
@@ -194,9 +207,11 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
                 original = document.createDocumentFragment();
                 original.append(...root.childNodes);
             }
+            previous?.widgets.forEach(w=>w.dispose?.());
             root.replaceChildren(...rendered.container.childNodes);
             root.dataset.displayBridgeOwned = plan.revision;
             states.set(root, { original, plan, widgets: rendered.widgets, avatar, message, source: displaySource(message), contextIdentity });
+            rendered.widgets.forEach(w=>w.refresh());
             errors.delete(root);
             afterRender(element);
         } catch (error) {
@@ -221,11 +236,15 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         }
         observer?.disconnect();
         try {
-            for (const [root] of states) if (!root.isConnected || !chat?.contains(root)) states.delete(root);
+            for (const [root] of states) if (!root.isConnected || !chat?.contains(root)){states.get(root).widgets.forEach(w=>w.dispose?.());states.delete(root);}
             for (const [root] of errors) if (!root.isConnected || !chat?.contains(root)) errors.delete(root);
             const ctx = getContext();
             const avatar = character()?.avatar;
             for (const root of chat?.querySelectorAll('.mes[mesid] .mes_text') ?? []) renderRoot(root, ctx, avatar);
+            refreshChatMusic(chat,avatar);
+            refreshChatInformation(chat,avatar);
+            chatDock.update({chat,key:JSON.stringify([chatScope(avatar),lifecycle.ensure(character())?.id]),music:chatMusic.host.isConnected?chatMusic.host:null,information:chatInformation.host.isConnected?chatInformation.host:null,stateEnabled:!!chat&&enabled(avatar)&&profile(avatar).adapters?.includes('portrait-dialogue')&&!!profile(avatar).portraitSource?.sceneState,generating:generationBusy});
+            sceneAudio.sweep();
             imageViewer.refresh();
             updateUI();
         } finally { observe(); }
@@ -233,6 +252,38 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     }
     function schedule() {
         if (!stopped && !frame) frame = requestAnimationFrame(render);
+    }
+
+    function refreshChatMusic(chat,avatar){
+        const preset=profile(avatar).portraitSource,music=preset?.sceneControls?.music;
+        if(!chat||!enabled(avatar)||!profile(avatar).adapters?.includes('portrait-dialogue')||!music){chatMusic.clear();return;}
+        // Keep the previous completed scene throughout normal generation,
+        // pending swipe slots, streaming and failed attempts.
+        if(generationBusy||(getContext().streamingProcessor&&getContext().streamingProcessor.isFinished!==true))return;
+        const ctx=getContext(),message=ctx.chat?.findLast(m=>eligible(m,avatar)&&planFor(m,avatar)?.items.some(i=>i.presentation==='scene'));
+        const item=message&&planFor(message,avatar)?.items.findLast(i=>i.presentation==='scene');
+        if(!item){chatMusic.clear();return;}
+        if(item.snapshotIssue&&chatMusic.host.isConnected)return;
+        const key=JSON.stringify([chatScope(avatar),lifecycle.ensure(character())?.id]);
+        const identity=lifecycle.ensure(character())?.id,chatId=durableChat(),signature=JSON.stringify(preset);
+        const def=portraitActions(preset),fallback=initialState(def),read=()=>chatId?preferences.getPreset(identity,chatId,signature)?.state??fallback:fallback;
+        const valid=()=>!stopped&&character()?.avatar===avatar&&enabled(avatar)&&profile(avatar).portraitSource===preset&&JSON.stringify([chatScope(avatar),lifecycle.ensure(character())?.id])===key;
+        if(!chatMusic.host.isConnected)chat.after(chatMusic.host);
+        const current=story.read(),track=preset.sceneState?.track&&current&&!current.issue?current.values[preset.sceneState.track]:item.sceneSnapshot?.track;
+        chatMusic.update({avatar,music,track,key,valid,volume:read().volume/10,onVolume:value=>{if(!valid()||!chatId)return;const before=read(),volume=Math.round(value*10);if(before.volume===volume)return;preferences.setPreset(identity,chatId,{signature,state:reduceAction(def,before,'volume-'+volume),previous:before});schedule();}});
+    }
+    function refreshChatInformation(chat,avatar){
+        const config=profile(avatar).portraitSource;
+        if(!chat||!enabled(avatar)||!profile(avatar).adapters?.includes('portrait-dialogue')||!config?.sceneState||!config.sceneControls?.roster||config.format?.details?.layers!==true){chatInformation.clear();return;}
+        const key=JSON.stringify([chatScope(avatar),lifecycle.ensure(character())?.id]);
+        const current=story.read();
+        // An in-flight output is not a new committed state. Its valid prefix
+        // still identifies the active swipe branch; do not show future totals.
+        const snapshot=current?.values?storySnapshot(current.values,config.sceneState):{};
+        const fallback=initialState(portraitActions(config)),identity=lifecycle.ensure(character())?.id,chatId=durableChat(),signature=JSON.stringify(config);
+        const state={read:()=>({...((chatId&&preferences.getPreset(identity,chatId,signature)?.state)||fallback),visual:true,image:true})};
+        if(!chatInformation.host.isConnected)chat.after(chatInformation.host);
+        chatInformation.update({key,config,snapshot,issue:generationBusy?null:current?.issue,avatar,state});
     }
 
     function getAssetReplay({ avatar, messageId, root }) {
@@ -249,6 +300,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     function setEnabled(avatar, value) {
         if (typeof avatar !== 'string' || !avatar) return;
         targetCharacter(avatar);
+        if(!value){sceneAudio.stop();story.switched();}
         updateProfile(avatar, { enabled: !!value, adapters: profile(avatar).adapters ?? [] });
         errors.clear();
         saveSettings();
@@ -289,7 +341,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     }
     function activeRules(target) {
         let stored = {};
-        try { stored = JSON.parse(target.json_data || '{}'); } catch { /* Use live metadata if available. */ }
+        try { if(target.data?.extensions?.regex_scripts == null) stored = JSON.parse(target.json_data || '{}'); } catch { /* Use live metadata if available. */ }
         const local = target.data?.extensions?.regex_scripts ?? stored.data?.extensions?.regex_scripts;
         return [...(Array.isArray(extensionSettings.regex) ? extensionSettings.regex : []), ...(Array.isArray(local) ? local : [])];
     }
@@ -323,7 +375,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         try { result = discoverProfile(envelope.source,cssParser); }
         catch(error) { result = {profile:null,notes:[error.message],rejected:true}; }
         const images = envelope.images ?? {};
-        const report = {importId:envelope.importId,status:result.rejected?'rejected':'unsupported',
+        const report = {importId:envelope.importId,status:result.rejected?'rejected':result.notRequested?'not-requested':'unsupported',
             origin:sourceOrigin(envelope.source?.origin), discovery:result.discovery ?? null,
             adapters:result.profile?.adapters.map(item=>item.id) ?? [], notes:result.notes,
             images:{status:images.status==='mapped'?'mapped':'incomplete',mapped:Number.isInteger(images.mapped)&&images.mapped>=0?images.mapped:0,
@@ -332,8 +384,9 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
             const conflicts = profileConflicts(result.profile,activeRules(target));
             if (conflicts.length) report.notes.push(`Existing regex rules may also render these panels: ${conflicts.join(', ')}. Review them before enabling the profile.`);
             const configured = Object.hasOwn(profile(avatar),'enabled') || (profile(avatar).adapters?.length ?? 0)>0 || !!profile(avatar).witchcureSource;
-            if (configured || conflicts.length) {
+            if (configured || conflicts.length || result.requiresReview) {
                 report.status = 'review';
+                if(result.requiresReview)report.notes.push('Scene assembly has unresolved dependencies. Review feature coverage before applying this partial profile.');
                 if (configured) report.notes.push('Existing character options were preserved. Apply the imported profile to replace its panel selections.');
                 report.preservePortraitMappings=!!profile(avatar).portraitSource&&result.profile.adapters.some(a=>a.id==='portrait-dialogue'&&a.source.format.kind===profile(avatar).portraitSource.format.kind);
                 if(report.preservePortraitMappings)report.notes.push('Existing portrait mappings and appearance options will be kept on apply unless you clear the keep-mappings checkbox.');
@@ -363,6 +416,10 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     function exportProfile(avatar) {
         const target = targetCharacter(avatar);
         return profileFromSettings({...profile(avatar),witchcureSource:profile(avatar).witchcureSource ?? witchcureSource(target)},cssParser);
+    }
+    function exportCardProfile(avatar) {
+        targetCharacter(avatar);
+        return profile(avatar).adapters?.length ? exportProfile(avatar) : null;
     }
 
     // A single bounded undo point, not a copy of chats, importer state or rules.
@@ -443,9 +500,10 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
             actions:['Stream: display and disclosure controls. Gallery: open posts, browse comments and return to the list.',
                 'Witchcure: switch roster/report, open character details and map regions. Status values are read from message text.',
                 'Portrait/dialogue: appearance selection, independent visibility controls, console, reset and undo. Choices are saved per chat; world/story variables are not changed.',
-                'These are presentation actions. Automatic roster placement affects display only. Arbitrary Lua and story-variable changes are not executed.'],
+                'Presentation actions do not change story values. A v8 scene-state profile can separately save reviewed updates and send declared facts in model context. Arbitrary Lua and STscript are not executed.'],
             provider,delivery:provider.delivery??null,imageIssues,runtime,conflicts:profileConflicts({adapters:definitions},activeRules(selected)),
-            notes:(imported?.notes??[]).concat(imported?.images?.issues??[]),pending:!!current.pendingProfile,
+            notes:(imported?.notes??[]).concat(imported?.images?.issues??[],current.portraitSource?.sceneControls?[current.portraitSource.sceneState?'Scene state uses reviewed typed updates. Source conversion coverage is listed above when available; arbitrary triggers, prompt macros, randomness and history edits remain unsupported.':'Scene information uses explicit per-scene snapshots; Risu variable updates and prompt context are not translated.',...(current.portraitSource.sceneControls.music?['Chat music requires local assets and an initial Play click. It loops by default, continues during generation and follows completed scene/state track selections.']:[])]:[]),pending:!!current.pendingProfile,
+            sceneState:current.portraitSource?.sceneState?{configured:true,status:!enabled(avatar)?'off':story.read()?.issue?'needs review':'ready',issue:story.read()?.issue??null,modelContext:!!current.portraitSource.sceneState.context,startup:!!current.portraitSource.sceneState.startup}:null,
             canRestore:!!current.previousPanels,recoveryAvailable:window.v3sprites?.recovery?.version===1,
             persistence:{chat:durableChat(),mode:preferences.get(lifecycle.ensure(selected)?.id,durableChat()),retiredProfiles:settings().retired?.length??0}};
     }
@@ -603,9 +661,16 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'menu_button'; retry.textContent = 'Refresh panels';
         retry.addEventListener('click', () => { errors.clear(); schedule(); });
         const compatibilityView=createCompatibilityView(recover);
+        const storyBox=document.createElement('details'),storyTitle=document.createElement('summary'),storyStatus=document.createElement('p'),storyChoice=document.createElement('select'),storyButton=document.createElement('button');
+        storyTitle.textContent='Conversation state';storyChoice.className='text_pole';storyChoice.setAttribute('aria-label','Starting branch');storyButton.type='button';storyButton.className='menu_button';storyButton.textContent='Initialize / rebuild scene state';
+        const storyHelp=document.createElement('p');storyHelp.textContent='Replays the saved active messages using the reviewed profile. A starting branch replaces the startup marker in a fresh chat. Declared context fields are sent with future requests; this does not execute Risu scripts.';
+        storyButton.addEventListener('click',async()=>{storyButton.disabled=true;try{await story.rebuild(storyChoice.value||null);storyStatus.textContent='State saved.';}catch(e){storyStatus.textContent=e.message;}finally{storyButton.disabled=false;}});
+        storyBox.append(storyTitle,storyHelp,storyChoice,storyButton,storyStatus);
         body.append(current, label, compactLabel, note, streamLabel, witchLabel, galleryLabel, portraitLabel, setupPreset, editorSlot, attach, importButton, exportButton, attachStatus, importSummary, keepMappingsLabel, applyButton, dismissButton, compatibilityView.host, previewButton, retry, report, preview);
+        body.append(storyBox);
+        panel.addEventListener('toggle',()=>{if(panel.open&&!stopped)updateUI();});
         panel.append(summary, body); container.append(panel);
-        controls = { panel, checkbox, compactCheckbox, portraitCheckbox, setupPreset, editorSlot, streamCheckbox, witchCheckbox, galleryCheckbox, attach, importButton, exportButton, importSummary, keepMappingsLabel, keepMappings, applyButton, dismissButton, current, report, compatibilityView };
+        controls = { panel, checkbox, compactCheckbox, portraitCheckbox, setupPreset, editorSlot, streamCheckbox, witchCheckbox, galleryCheckbox, attach, importButton, exportButton, importSummary, keepMappingsLabel, keepMappings, applyButton, dismissButton, current, report, compatibilityView,storyBox,storyChoice,storyStatus };
     }
     function updateUI() {
         if (!controls) return;
@@ -633,16 +698,28 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         if (controls.importSummary.textContent !== importText) controls.importSummary.textContent = importText;
         const current = selected ? `Character: ${selected.name}` : 'Select a single-character chat to enable panels.';
         if (controls.current.textContent !== current) controls.current.textContent = current;
-        const d = diagnostics();
-        const report = `Images: ${d.provider}. Panels: ${d.mounted}. Unresolved images: ${d.unresolvedImages}. Incomplete: ${d.incomplete}. Unsupported: ${d.unsupported}. Conflicts: ${d.conflicts.length}. Witchcure: ${d.witchcure}${d.witchcurePanels.length ? ` (${d.witchcurePanels.join(', ')})` : ''}.`;
-        if (controls.report.textContent !== report) controls.report.textContent = report;
         controls.keepMappingsLabel.hidden=!pending||!imported?.preservePortraitMappings;
         const mappingReceipt=JSON.stringify([controls.avatar,imported?.importId]);if(controls.mappingReceipt!==mappingReceipt){controls.keepMappings.checked=true;controls.mappingReceipt=mappingReceipt;}
-        controls.compatibilityView.update(compatibility());
+        // Reports inspect all assets/rules; keep them out of ordinary chat updates.
+        // Opening settings computes a fresh report, including external edits.
+        if(!controls.panel.open)return;
+        const stateConfig=selected?profile(selected.avatar).portraitSource?.sceneState:null;
+        controls.storyBox.hidden=!stateConfig;
+        if(stateConfig){const signature=JSON.stringify(stateConfig.startup);if(controls.storySignature!==signature){controls.storyChoice.replaceChildren();for(const c of stateConfig.startup?.choices??[]){const o=document.createElement('option');o.value=c.id;o.textContent=c.label;controls.storyChoice.append(o);}controls.storySignature=signature;}controls.storyChoice.hidden=!stateConfig.startup;const state=story.read();controls.storyStatus.textContent=state?.issue??'Accepted state is ready. Live totals are excluded from profile exports.';}
+        const compatibilityReport=compatibility(),d=compatibilityReport.runtime??diagnostics();
+        const report = `Images: ${d.provider}. Panels: ${d.mounted}. Unresolved images: ${d.unresolvedImages}. Incomplete: ${d.incomplete}. Unsupported: ${d.unsupported}. Conflicts: ${d.conflicts.length}. Witchcure: ${d.witchcure}${d.witchcurePanels.length ? ` (${d.witchcurePanels.join(', ')})` : ''}.`;
+        if (controls.report.textContent !== report) controls.report.textContent = report;
+        controls.compatibilityView.update(compatibilityReport);
     }
 
     function start() {
         const ctx = getContext();
+        for(const [name,handler]of [
+            ['GENERATION_STARTED',story.begin],['GENERATION_AFTER_COMMANDS',(...args)=>{try{story.prepare(...args);}catch(e){window.toastr?.error?.(e.message,'Display Bridge scene state');}}],
+            ['MESSAGE_RECEIVED',async(id,type)=>{try{await story.received(id,type);}catch(e){window.toastr?.error?.(e.message,'Display Bridge scene state');story.invalidate();}}],
+            ['GENERATION_STOPPED',story.cancel],['GENERATION_ENDED',story.end],['CHAT_CHANGED',story.switched],
+            ...['MESSAGE_EDITED','MESSAGE_UPDATED','MESSAGE_SWIPED','MESSAGE_DELETED','CHAT_CREATED'].map(name=>[name,story.invalidate]),
+        ]){const type=(ctx.eventTypes??ctx.event_types)?.[name];if(type){ctx.eventSource.on(type,handler);subscriptions.push(()=>ctx.eventSource.removeListener(type,handler));}}
         for(const target of ctx.characters??[]) lifecycle.ensure(target);
         for(const [name,handler] of [
             ['CHARACTER_DELETED',({character:target}={})=>{if(target)lifecycle.remove(target);schedule();}],
@@ -650,6 +727,9 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
             ['CHARACTER_EDITED',()=>{compiledSources.clear();plans=new WeakMap();schedule();}],
             ['CHAT_CREATED',()=>{const target=character(),chat=durableChat();if(target&&chat)preferences.reset(lifecycle.ensure(target)?.id,chat);schedule();}],
         ]) {const type=(ctx.eventTypes??ctx.event_types)?.[name];if(type){ctx.eventSource.on(type,handler);subscriptions.push(()=>ctx.eventSource.removeListener(type,handler));}}
+        // Token-count dry runs have no matching end event. Offline attempts can
+        // also return early. Keep playback running without leaving a busy latch.
+        for(const name of ['GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED','CHAT_CHANGED']){const type=(ctx.eventTypes??ctx.event_types)?.[name];if(type){const handler=(_type,_options,dryRun)=>{if(name==='GENERATION_STARTED'&&dryRun===true)return;generationBusy=name==='GENERATION_STARTED'&&getContext().onlineStatus!=='no_connection';if(name==='CHAT_CHANGED'){chatMusic.clear();chatInformation.clear();}schedule();};ctx.eventSource.on(type,handler);subscriptions.push(()=>ctx.eventSource.removeListener(type,handler));}}
         for (const name of ['APP_READY', 'CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED', 'MORE_MESSAGES_LOADED', 'GENERATION_ENDED', 'SETTINGS_UPDATED']) {
             const type = (ctx.eventTypes ?? ctx.event_types)?.[name];
             if (type) { ctx.eventSource.on(type, schedule); subscriptions.push(() => ctx.eventSource.removeListener(type, schedule)); }
@@ -662,7 +742,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         window.dispatchEvent(new CustomEvent('display-bridge:import-ready'));
     }
     function stop() {
-        stopped = true;
+        stopped = true;chatMusic.dispose();chatInformation.dispose();chatDock.dispose();story.stop();
         imageViewer.stop();
         cancelAnimationFrame(frame); frame = 0;
         observer?.disconnect();
@@ -672,5 +752,5 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         plans = new WeakMap(); errors.clear(); compiledSources.clear(); actionStore.clear();
         window.dispatchEvent(new CustomEvent('display-bridge:ownership-changed'));
     }
-    return { start, stop, refresh: schedule, render, setEnabled, setStreamEnabled, setGalleryEnabled, setWitchcureEnabled, attachWitchcure, importProfile, exportProfile, applyPending, diagnostics, compatibility, restorePanels, resetPreferences,exportPreferences,importPreferences, api: Object.freeze({ apiVersion: 1, getAssetReplay, importApiVersion:1, receiveImport, recoveryApiVersion:1, captureRecovery, restoreRecovery }) };
+    return { start, stop, refresh: schedule, render, setEnabled, setStreamEnabled, setGalleryEnabled, setWitchcureEnabled, attachWitchcure, importProfile, exportProfile, applyPending, diagnostics, compatibility, restorePanels, resetPreferences,exportPreferences,importPreferences, story, interceptRequest:(...args)=>{if(!stopped)story.intercept(...args);}, api: Object.freeze({ apiVersion: 1, getAssetReplay, importApiVersion:1, receiveImport, exportApiVersion:1, exportProfile:exportCardProfile, recoveryApiVersion:1, captureRecovery, restoreRecovery, snapshot }) };
 }

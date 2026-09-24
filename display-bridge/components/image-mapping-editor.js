@@ -2,10 +2,16 @@ import { resolveImage } from '../integrations/assets.js';
 import { validateImageMappings } from '../adapters/portrait-mappings.js';
 
 // A small reusable row editor. Asset names are suggestions, not inferred rules.
-export function createImageMappingEditor({avatar,initial={},suggestions=[],title='Image mappings',resolver=resolveImage,referenceLabels,knownReferences=[]}) {
-    const host=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=title;host.append(legend);
+export function createImageSuggestions(suggestions=[]) {
     const list=document.createElement('datalist');list.id='db-assets-'+crypto.randomUUID();
-    for(const name of [...new Set(suggestions)].slice(0,2000)){const o=document.createElement('option');o.value=name;list.append(o);}host.append(list);
+    for(const name of [...new Set(suggestions)].slice(0,2000)){const o=document.createElement('option');o.value=name;list.append(o);}
+    return list;
+}
+
+export function createImageMappingEditor({avatar,initial={},suggestions=[],suggestionList,title='Image mappings',resolver=resolveImage,referenceLabels,knownReferences=[]}) {
+    const host=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=title;host.append(legend);
+    const list=suggestionList??createImageSuggestions(suggestions);
+    if(!suggestionList)host.append(list);
     const rows=document.createElement('div');host.append(rows);
     const button=(label,fn)=>{const b=document.createElement('button');b.type='button';b.className='menu_button';b.textContent=label;b.addEventListener('click',fn);return b;};
     function add(from='',to='',fixed=false) {

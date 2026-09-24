@@ -11,10 +11,12 @@ import { createGallery } from '../components/gallery.js';
 import { parseWitchcureAuxiliary } from '../adapters/witchcure-auxiliary.js';
 import { createWitchcureAuxiliary } from '../components/witchcure-auxiliary.js';
 import { resolveImage } from '../integrations/assets.js';
+import {sourceMarkerRanges} from '../adapters/scene-source-context.js';
+import {sceneAnnotationRanges} from '../adapters/scene-normalization.js';
 
 export function displaySource(message) { return message.extra?.display_text || message.mes; }
 
-export function makePlan(source, { stream = true, gallery = false, witchcure = null, portrait = null, recent = true, statusRecent = true, depth = 0, latestAssistant = true } = {}) {
+export function makePlan(source, { stream = true, gallery = false, witchcure = null, portrait = null, recent = true, statusRecent = true, depth = 0, latestAssistant = true, storyUpdates = [] } = {}) {
     const parsed = stream ? parsePanels(source) : { blocks: [], incomplete: 0, unsupported: 0 };
     const blocks = [];
     const errors = [];
@@ -44,13 +46,16 @@ export function makePlan(source, { stream = true, gallery = false, witchcure = n
     if(['tagged','scene-fragments'].includes(portrait?.format.kind)){
         for(const item of vn.blocks)item.controls=false;
         const visible=vn.blocks.filter(item=>!item.suppressed);
-        if(latestAssistant&&visible.some(item=>item.presentation!=='narration')){
+        if(latestAssistant&&!portrait.format.details?.layers&&visible.some(item=>item.presentation!=='narration')){
             let controller=visible.findLast(item=>item.presentation==='metadata');
             if(!controller){controller={type:'portrait-dialogue',presentation:'metadata',speaker:'',dialogue:'',portrait:'',config:portrait,start:source.length,end:source.length};vn.blocks.push(controller);}
             controller.controls=true;controller.moveBottom=true;
         }
     }
     blocks.push(...vn.blocks);
+    for(const [start,end]of sceneAnnotationRanges(source,portrait?.format?.normalization))if(!blocks.some(b=>start<b.end&&end>b.start))blocks.push({type:'story-cleanup',start,end});
+    if(portrait?.sceneState?.request)for(const [start,end]of sourceMarkerRanges(source,portrait.sceneState.request))if(!blocks.some(b=>start<b.end&&end>b.start))blocks.push({type:'story-cleanup',start,end});
+    for(const u of storyUpdates)if(u.end>u.start&&!blocks.some(b=>u.start<b.end&&u.end>b.start))blocks.push({type:"story-cleanup",start:u.start,end:u.end});
     blocks.sort((a,b) => a.start - b.start);
     const protectedPlan = protectPanels(source, blocks, crypto.randomUUID().replaceAll('-', ''));
     // Keep an appended roster token out of the preceding Markdown construct,
@@ -108,7 +113,7 @@ export function renderPlan(plan, formattedHTML, options) {
             fragment.append(document.createTextNode(textNode.data.slice(cursor, index)));
             const item = targets.get(token);
             const cleanup=()=>{const host=document.createElement('span');host.hidden=true;return {host,refresh:()=>{},missingImages:()=>0};};
-            const factory = item.type==='portrait-dialogue'?createPortraitDialogue:item.type==='witchcure-cleanup'?cleanup:item.type==='witchcure-portrait'?createPortrait:item.type === 'witchcure' ? createWitchcure : item.type.startsWith('witchcure-') ? createWitchcureAuxiliary : item.type === 'gallery' ? createGallery : createMediaPanel;
+            const factory = item.type==='portrait-dialogue'?createPortraitDialogue:['witchcure-cleanup','story-cleanup'].includes(item.type)?cleanup:item.type==='witchcure-portrait'?createPortrait:item.type === 'witchcure' ? createWitchcure : item.type.startsWith('witchcure-') ? createWitchcureAuxiliary : item.type === 'gallery' ? createGallery : createMediaPanel;
             const widget = factory(item, { ...options, stateFor: options.stateFor ? (definition, active) => options.stateFor(definition,item,active) : undefined });
             widget.moveTop = item.moveTop;
             widget.moveBottom=item.moveBottom;

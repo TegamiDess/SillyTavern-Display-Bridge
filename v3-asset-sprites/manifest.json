@@ -6,6 +6,6 @@
   "js": "index.js",
   "css": "style.css",
   "author": "anonymous",
-  "version": "0.6.4",
+  "version": "0.9.1",
   "license": "AGPL-3.0-only"
 }

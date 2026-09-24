@@ -2,6 +2,10 @@
 
 Goal: import a CHARX into SillyTavern and bring along its supported images and UI, with a clear explanation of incompatible behaviour.
 
+Current accepted testing build is 0.21.1 / V3 Asset Sprites 0.9.1; see [release acceptance](../RELEASE-ACCEPTANCE.md). The next proposed cycle is the [wider compatibility audit](COMPATIBILITY-AUDIT-0.21.1.md): import/reporting prerequisites, bounded startup and conditional prompt content, the embedded-greeting pilot, then Raen setup and message-owned effects. That audit does not implement or certify those features. The [To Love Ru scene plan](SCENE-IMPORT-PLAN.md) and older checkpoints below record the preceding development sequence.
+
+The completed scene cycle covers [scene assembly](SCENE-ASSEMBLY.md), [controls](SCENE-CONTROLS.md), [typed state](SCENE-STATE.md), [reviewed automatic import](SCENE-AUTO-IMPORT.md), and the scoped release acceptance above. It does not provide general source conditions, random/history-edit effects, or arbitrary macro conversion.
+
 ## Checkpoint — Display Bridge 0.9.0 / V3 Asset Sprites 0.6.1
 
 The profile format, importer handoff, compatibility reporting and targeted recovery are implemented. This release adds the remaining supplied Witchcure display rules and the first persistence/lifecycle implementation: per-chat roster/report preferences, reset/export/load, native character identity, rename/deletion/replacement handling, interrupted mapping reconciliation and reviewed attachment of unassigned sources. Group chats remain unsupported. Existing stream/gallery/status/map and swipe fixes remain included.

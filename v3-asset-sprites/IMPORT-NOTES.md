@@ -1,3 +1,7 @@
+## 0.8.1 — card media folders
+
+New raster image and audio uploads use ST's media endpoint with `V3 - Card name - unique identity` folders under `user/images/`. Exact asset mappings and unique filenames remain; same-named cards do not share folders. Legacy loose mappings remain valid. Repair/rollback use folder uploads. AVIF retains the file endpoint because ST's media allowlist excludes it. Recovery journals remain in `user/files/`. No automatic move/delete is performed.
+
 **For step-by-step setup, use the [beginner import guide](../START-HERE.md).** These notes contain technical details and release history.
 
 ## Audit patch 0.6.2
@@ -60,3 +64,23 @@ Risu control/placement directives in rule flags are excluded before JavaScript r
 ## License
 
 Licensed under AGPL-3.0-only. See [LICENSING.md](LICENSING.md), [LICENSE](LICENSE) and [third-party notices](THIRD-PARTY-NOTICES.md).
+
+## 0.6.5 — repeated metadata reads
+
+Reuses the most recently parsed serialized card during image/rule reads. Changed serialized data is reparsed and live metadata is read on every call. The cache holds one revision only. Install the complete folder, including the new `card-data.js` module. Import, recovery and permissions are unchanged.
+
+## 0.7.0 — portable configured CHARX
+
+Adds **Export configured card (CHARX)** and a versioned image-rule payload. Paired with Display Bridge 0.15.0, exports include the applied UI profile, mapped local images, avatar and portable rule definitions. Import validates definitions before native writes and rebuilds local markers through the existing reviewed rule workflow. Disabled/removed rules survive the round trip; permission grants do not. Image-only exports explicitly skip UI discovery. See [sharing and limitations](../EXPORT.md).
+
+## 0.7.1 — Risu asset-library classification
+
+Configured export labels generic named images `x-risu-asset`, so Risu imports them into its asset library. The same archive remains readable by this provider. Main avatar and explicit special/custom asset roles are preserved; image bytes are not duplicated. Re-export an older package to apply the fix. This does not convert Display Bridge profiles into Risu scripts.
+
+## 0.8.0 — local audio assets
+
+Declared MP3/WAV/Ogg assets are checked by their bytes and imported into unique local `user/files` paths (32 MB per track). No remote fetch or shared-gallery guessing. Audio shares character lifecycle, replacement backup/restore and configured CHARX export, while the image resolver remains image-only. `api.audioApiVersion: 1` adds exact-name `resolveAudio({avatar, reference})`. Image API version 1 is unchanged. The recovery backup limit includes all media. Playback is owned by Display Bridge; importing audio does not execute Risu music macros.
+
+## 0.9.0 scene handoff
+
+The bounded UI envelope now preserves asset descriptors, default-variable source and structured trigger fields for reviewed automatic scene assembly. Default values can contain template text; treat retained source as private card metadata. Explicit profiles retain precedence. No imported trigger code is executed. Use Display Bridge 0.19.0 for generated v9 profiles.

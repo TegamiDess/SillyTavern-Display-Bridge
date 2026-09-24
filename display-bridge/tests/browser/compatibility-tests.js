@@ -4,6 +4,7 @@ import { createDisplayHandoff } from './display-handoff.js';
 
 const definition={kind:'display-bridge-profile',schemaVersion:1,adapters:[{id:'gallery',version:1}]};
 export async function runCompatibilityTests({test,assert,setup,wait,ctx,characters,extension_settings,bridge}) {
+    const closedSetup=setup;setup=(...args)=>{const result=closedSetup(...args);bridge().render();document.getElementById('display-bridge-settings').open=true;bridge().render();return result;};
     const button=label=>[...document.querySelectorAll('#display-bridge-settings button')].find(x=>x.textContent===label);
     await test('Compatibility distinguishes adapted panels, excluded image rules, disabled rules and unexecuted effects',async()=>{
         setup(undefined,{stream:false});

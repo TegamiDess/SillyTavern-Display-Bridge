@@ -11,7 +11,7 @@ export async function runOutfitTests({test,assert,setup,wait,ctx,bridge}){
  try{
  await test('Editor presents character identities and groups all portraits in each outfit without changing original references',()=>{
   setup('',{stream:false});let staged;const editor=createPresetEditor({source:c(),avatar:'test-a.png',sample:message,review:s=>staged=s,close(){}});document.querySelector('.mes_text').append(editor);
-  const rows=editor.querySelectorAll('.db-appearance-option');assert(rows.length===2);assert(rows[1].textContent.includes('Alex')&&rows[1].textContent.includes('Robin'));
+  const rows=editor.querySelectorAll('.db-appearance-option');assert(rows.length===2);rows[1].open=true;rows[1].dispatchEvent(new Event('toggle'));assert(rows[1].textContent.includes('Alex')&&rows[1].textContent.includes('Robin'));
   const bases=rows[1].querySelectorAll('[aria-label="Source image name"]');assert(bases[0].readOnly&&bases[0].value==='guide-school');assert(bases[1].value==='curator-school');
   const rename=input(editor,'Character label for guide-school');rename.value='Alex renamed';rename.dispatchEvent(new Event('input'));assert(rows[1].querySelector('.db-portrait-identity').textContent==='Alex renamed');
   const required=input(editor,'Always use an outfit (hide As written)');required.checked=true;required.dispatchEvent(new Event('change'));input(editor,'Default appearance').value='casual';click(editor,'Review preset for this character');

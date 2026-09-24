@@ -19,7 +19,7 @@ export function createImageViewer({enabled,scope}) {
         style.textContent=':host{position:fixed;z-index:2147483000;inset:0;display:grid;place-items:center;pointer-events:none;background:transparent}:host([hidden]){display:none}img{display:block;object-fit:contain;max-width:85vw;max-height:85vh;border:0;border-radius:0;background:transparent;padding:0;margin:0}';
         picture=document.createElement('img');picture.alt='';picture.addEventListener('error',hide);shadow.append(style,picture);document.body.append(overlay);
     }
-    function hide(){clearTimeout(hoverTimer);hoverTimer=0;active=null;if(overlay){overlay.hidden=true;picture.removeAttribute('src');}}
+    function hide(){if(hoverTimer){clearTimeout(hoverTimer);hoverTimer=0;}active=null;if(overlay&&!overlay.hidden){overlay.hidden=true;picture.removeAttribute('src');}}
     function expanded(button){return button.getAttribute('aria-expanded')==='true';}
     function setExpanded(button,value){
         button.setAttribute('aria-expanded',String(value));button.classList.toggle('db-image-expanded',value);

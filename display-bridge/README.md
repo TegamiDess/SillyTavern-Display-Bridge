@@ -1,6 +1,6 @@
-# Display Bridge 0.14.2
+# Display Bridge 0.19.0
 
-Renders supported card UI inside SillyTavern using reviewed adapters and portable profiles. Companion V3 Asset Sprites 0.6.4 supplies declared local images and CHARX import handoff.
+Renders supported card UI inside SillyTavern using reviewed adapters and portable profiles. Companion V3 Asset Sprites 0.9.0 supplies declared local images and CHARX import handoff.
 
 Start with the [beginner import guide](../START-HERE.md) for step-by-step card setup.
 
@@ -16,3 +16,5 @@ See the [repository README](../README.md) for installation and [testing guide](.
 Licensed under [AGPL-3.0-only](LICENSE); see [licensing details](LICENSING.md) and [third-party notices](THIRD-PARTY-NOTICES.md).
 
 Original message text stays unchanged. Unsupported source scripts and structures are reported rather than automatically executed. Profiles requiring a newer adapter version are rejected by older versions.
+
+- [Snapshot compatibility](../SNAPSHOT.md): optional capture-only patch for Snapshot 3.3.0.

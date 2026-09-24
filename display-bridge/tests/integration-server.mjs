@@ -1,5 +1,6 @@
 // Runs a neutral fixture in a browser; never opens user settings, cards or chats.
 import http from 'node:http';
+import {neutralWav} from './fixtures/scene-controls.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +44,9 @@ function regexFromString(value) { const m = /^\\/(.*)\\/([a-z]*)$/.exec(value); 
 ` + read(path.join(st, 'public/scripts/extensions/regex/engine.js')).replace(/^import .+;\n/gm, '');
 const assets = `
 import {ctx, extension_settings, eventSource, event_types} from './runtime.js';
+import {createCardDataReader} from './card-data.js';
+import {audioAssets,sniffAudio,localAudioURL} from './audio-assets.js';
+import {PORTABLE_KEY,portableRules,makePortableCard,packageImages,packageAudio} from './portable-card.js';
 import {captureDisplaySource, createDisplayHandoff} from './display-handoff.js';
 import {decodeRisuModule, mergeModuleSource, MODULE_LIMIT} from './risu-module.js';
 import {namedImageRule} from './named-image-rule.js';
@@ -55,6 +59,9 @@ const fetch = (...args) => window.fixtureImport ? window.fixtureImport.fetch(...
 const fixtureConfirm = message => window.fixtureImport?.confirm?.(message) ?? false;
 ` + read(provider).replace(/^import \{[\s\S]*?\} from [^;]+;\n/gm, '').replaceAll('window.confirm(', 'fixtureConfirm(') + '\nwindow.testRuleSignature = ruleSignature; window.testBuildRules = buildRules; window.testReconcileProviderStartup=()=>{reconciledStartup=false;reconcileStartup();};\n';
 const generated = { '/fixtures/formatter.js': formatter, '/fixtures/regex-engine.js': regex, '/fixtures/v3-runtime.js': assets,
+    '/fixtures/audio-assets.js':read(path.join(path.dirname(provider),'audio-assets.js')),
+    '/fixtures/card-data.js':read(path.join(path.dirname(provider),'card-data.js')),
+    '/fixtures/portable-card.js':read(path.join(path.dirname(provider),'portable-card.js')),
     '/fixtures/recovery.js':read(path.join(path.dirname(provider),'recovery.js')),
     '/fixtures/character-lifecycle.js':read(path.join(path.dirname(provider),'character-lifecycle.js')),
     '/fixtures/display-handoff.js':read(path.join(path.dirname(provider),'display-handoff.js')),
@@ -88,7 +95,9 @@ const server = http.createServer((req,res) => {
         });
         return;
     }
-    if (name.startsWith('/user/files/')) { res.setHeader('Content-Type','image/png'); if(name==='/user/files/slow-hover.png')setTimeout(()=>res.end(pixel),1000);else res.end(pixel); return; }
+    if(name==='/fixtures/native-audio.wav'){res.setHeader('Content-Type','audio/wav');res.end(neutralWav());return;}
+    if (name==='/user/files/snapshot-portrait.svg') {res.setHeader('Content-Type','image/svg+xml');res.end('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><circle cx="100" cy="60" r="45" fill="rgb(220,180,150)"/><path d="M30 115 H170 L190 290 H10 Z" fill="rgb(100,140,220)"/><circle cx="84" cy="55" r="4" fill="#202630"/><circle cx="116" cy="55" r="4" fill="#202630"/></svg>');return;}
+    if (name.startsWith('/user/files/')) { if(name==='/user/files/snapshot-missing.png'){res.writeHead(404);res.end();return;} res.setHeader('Content-Type','image/png'); if(name==='/user/files/slow-hover.png')setTimeout(()=>res.end(pixel),1000);else res.end(pixel); return; }
     if (Object.hasOwn(generated, name)) { res.setHeader('Content-Type','text/javascript'); res.end(generated[name]); return; }
     let filename = vendors[name];
     if (!filename) {

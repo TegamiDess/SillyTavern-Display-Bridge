@@ -1,7 +1,7 @@
 {
   "name": "sillytavern-display-bridge",
   "private": true,
-  "version": "0.14.2",
+  "version": "0.21.1",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js"

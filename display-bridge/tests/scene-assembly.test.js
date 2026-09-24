@@ -5,9 +5,9 @@ import {discoverProfile,validateProfile,profileConflicts} from '../core/profiles
 import {parsePortraitDialogue,validatePortraitPreset} from '../adapters/portrait-dialogue.js';
 const discover=rules=>discoverProfile({sourceVersion:1,ruleOptionsVersion:1,risuai:{customScripts:rules}});
 const preset=(family='four')=>discover(sceneRules(family)).profile.adapters[0].source;
-test('Independent background/cast/dialogue/status rules assemble both source families into portable v4',()=>{
+test('Independent background/cast/dialogue/status rules assemble both source families into portable v6',()=>{
     for(const family of ['four','five']) {
-        const r=discover(sceneRules(family));assert.equal(r.profile.adapters[0].version,4);assert.deepEqual(validateProfile(r.profile),r.profile);
+        const r=discover(sceneRules(family));assert.equal(r.profile.adapters[0].version,6);assert.deepEqual(validateProfile(r.profile),r.profile);
         const b=parsePortraitDialogue(sceneMessage(family),preset(family)).blocks[0];
         assert.equal(b.presentation,'scene');assert.equal(b.background,'room');assert.equal(b.portraits.length,2);assert.equal(b.portraits[1].hover,'curator-smile');
         assert.equal(b.time,'18:30');assert.equal(b.dialogue,'Welcome to the observatory.\nThe guides prepare the telescope.');assert.equal(b.location,family==='five'?'Observatory':undefined);

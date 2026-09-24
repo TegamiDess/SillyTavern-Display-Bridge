@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { audioAssets, sniffAudio, localAudioURL } from './audio-assets.js';
+import { createCardDataReader } from './card-data.js';
+import { PORTABLE_KEY, portableRules, makePortableCard, packageImages, packageAudio } from './portable-card.js';
 import { captureDisplaySource, createDisplayHandoff } from './display-handoff.js';
 import { decodeRisuModule, mergeModuleSource, MODULE_LIMIT } from './risu-module.js';
 import { namedImageRule } from './named-image-rule.js';
@@ -259,29 +262,7 @@ function declaredZipBytes(buffer) {
     return null;
 }
 
-function cardData(character) {
-    let json = {};
-
-    if (typeof character?.json_data === 'string') {
-        try {
-            json = JSON.parse(character.json_data);
-        } catch {
-            // The direct data object may still be usable.
-        }
-    }
-
-    const direct = dictionary(character?.data);
-    const stored = dictionary(json?.data);
-
-    return {
-        ...stored,
-        ...direct,
-        extensions: {
-            ...dictionary(stored.extensions),
-            ...dictionary(direct.extensions),
-        },
-    };
-}
+const cardData = createCardDataReader();
 
 function scriptsOf(character) {
     const rules = cardData(character).extensions?.regex_scripts;
@@ -374,13 +355,31 @@ function nativeBase(asset, index) {
     return base || `${category}-${index}`;
 }
 
+function supportedAssets(assets){return [...imageAssets(assets),...audioAssets(assets)];}
+function localMediaURL(path){return localImageURL(path)??localAudioURL(path);}
+async function mediaFolder(character){
+    ensureCharacter(character);
+    const id=characterLifecycle.ensure(character).id;
+    const name=String(character.name??'Card').normalize('NFKC').replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g,'_').trim().slice(0,70).replace(/[. ]+$/,'')||'Card';
+    return `V3 - ${name} - ${(await digest(id)).slice(0,24)}`;
+}
+async function uploadMediaFile(bytes,ext,folder,prefix){
+    const filename=`${prefix}-${uuidv4()}.${ext}`,data=bytesToBase64(bytes);
+    // ST's media endpoint supports card folders for both pictures and audio.
+    // AVIF is not in older ST media-upload allowlists; retain the file endpoint.
+    const response=ext==='avif'?await postJSON('/api/files/upload',{name:filename,data}):await postJSON('/api/images/upload',{image:data,format:ext,filename,ch_name:folder});
+    return (await response.json()).path;
+}
+async function uploadAudio(bytes,folder){const ext=sniffAudio(bytes);if(!ext)throw Error('Audio must be recognizable MP3, WAV or Ogg, up to 32 MB.');const path=await uploadMediaFile(bytes,ext,folder,'v3audio');if(!localAudioURL(path))throw Error('Unsupported audio upload path.');return {path,ext,kind:'audio'};}
+async function uploadMedia(bytes,folder){return sniffImage(bytes)?uploadImage(bytes,folder):uploadAudio(bytes,folder);}
+
 function collisionInfo(assets) {
     const names = new Map();
     const diskNames = new Map();
     const duplicateNames = new Set();
     const diskCollisions = new Set();
 
-    for (const { asset, index } of imageAssets(assets)) {
+    for (const { asset, index } of supportedAssets(assets)) {
         if (names.has(asset.name)) {
             duplicateNames.add(asset.name);
         } else {
@@ -569,21 +568,14 @@ function decodeImageDataURI(uri) {
     return match ? base64ToBytes(match[1]) : null;
 }
 
-async function uploadImage(bytes) {
+async function uploadImage(bytes,folder) {
     const ext = sniffImage(bytes);
 
     if (!ext) {
         throw new Error('Embedded data is not a supported recognizable image.');
     }
 
-    // No character/asset name enters the upload filename.
-    const name = `v3asset-${uuidv4()}.${ext}`;
-    const response = await postJSON('/api/files/upload', {
-        name,
-        data: bytesToBase64(bytes),
-    });
-
-    const result = await response.json();
+    const result={path:await uploadMediaFile(bytes,ext,folder,'v3asset')};
 
     if (!localImageURL(result.path)) {
         throw new Error('Upload returned an unsupported local image path.');
@@ -861,6 +853,13 @@ async function parseSourceFile(file) {
         throw new Error('Invalid character JSON.');
     }
 
+    // Reject broken portable rules before any native import/upload occurs.
+    const portable = portableRules(cardData(parsed.card).extensions?.[PORTABLE_KEY]);
+    if (portable) for (const rule of portable) parseImageTemplate(rule.output);
+    const bundle = cardData(parsed.card).extensions?.[PORTABLE_KEY];
+    if(bundle?.ui==='profile'&&!cardData(parsed.card).extensions?.display_bridge_profile)throw Error('Configured CHARX is missing its UI profile.');
+    if(bundle?.incomplete?.length)notify('warning',`This card was exported with ${bundle.incomplete.length} missing or unsupported asset(s). See its archive notes.`);
+
     return { ...parsed, avatarFile };
 }
 
@@ -871,6 +870,7 @@ function sourceMetadata(parsed, label) {
         capturedAt: new Date().toISOString(),
         assets: assetsOf(parsed.card),
         scripts: risuScripts(parsed.card),
+        portable: portableRules(cardData(parsed.card).extensions?.[PORTABLE_KEY]),
         origin: parsed.origin ?? {format:parsed.format,inlineRules:risuScripts(parsed.card).length,module:'not-applicable'},
     };
 }
@@ -884,6 +884,7 @@ function metadataFor(character) {
         format: saved?.format ?? 'unknown',
         capturedAt: saved?.capturedAt ?? new Date().toISOString(),
         ...(saved?.origin ? {origin:clone(saved.origin)} : {}),
+        portable: saved?.portable ?? portableRules(cardData(character).extensions?.[PORTABLE_KEY]),
 
         assets: Array.isArray(saved?.assets)
             ? clone(saved.assets)
@@ -931,6 +932,7 @@ async function bytesForAsset(asset, parsed) {
     const uri = String(asset.uri ?? '').trim();
 
     if (/^data:image\//i.test(uri)) return decodeImageDataURI(uri);
+    const audio=/^data:audio\/[\w.+-]+;base64,([\s\S]+)$/i.exec(uri);if(audio)return base64ToBytes(audio[1]);
 
     if (parsed
         && /^(?:embeded:\/\/|embedded:\/\/|__asset:)/i.test(uri)) {
@@ -956,6 +958,7 @@ function uniqueNormalizedFile(files, names) {
 async function buildMap(character, metadata, parsed = null) {
     const map = parsed?.replaceImages ? {} : clone(mapFor(character.avatar));
     const issues = [];
+    const folderName=await mediaFolder(character);
     const { duplicateNames, diskCollisions } = collisionInfo(metadata.assets);
 
     let folder = '';
@@ -983,7 +986,7 @@ async function buildMap(character, metadata, parsed = null) {
         if (parsed) {
             try {
                 const bytes=await bytesForAsset(asset,parsed);
-                if(bytes) {put(map,asset.name,await uploadImage(bytes));continue;}
+                if(bytes) {put(map,asset.name,await uploadImage(bytes,folderName));continue;}
             } catch(error) {issues.push(`${asset.name}: ${error.message}`);continue;}
             if(parsed.isolatedAssets) {issues.push(`${asset.name}: embedded bytes unavailable; shared gallery was not guessed.`);continue;}
         }
@@ -1037,7 +1040,7 @@ async function buildMap(character, metadata, parsed = null) {
             const bytes = await bytesForAsset(asset, parsed);
 
             if (bytes) {
-                put(map, asset.name, await uploadImage(bytes));
+                put(map, asset.name, await uploadImage(bytes,folderName));
             } else {
                 const reason = nativeCollision
                     ? 'native filename collision'
@@ -1050,6 +1053,11 @@ async function buildMap(character, metadata, parsed = null) {
         }
     }
 
+    for(const {asset} of audioAssets(metadata.assets)){
+        if(duplicateNames.has(asset.name)){issues.push(`${asset.name}: duplicate media name; not guessed.`);continue;}
+        if(localAudioURL(read(map,asset.name)?.path))continue;
+        try{const bytes=await bytesForAsset(asset,parsed);if(!bytes)throw Error('local audio bytes unavailable; reattach original archive');put(map,asset.name,await uploadAudio(bytes,folderName));}catch(error){issues.push(`${asset.name}: ${error.message}`);}
+    }
     return { map, issues };
 }
 
@@ -1201,6 +1209,7 @@ function buildRules(character, metadata) {
     );
 
     const wanted = [];
+    const specifications = [];
     const approved = {};
     const issues = [];
 
@@ -1209,16 +1218,22 @@ function buildRules(character, metadata) {
             const previous = current.find(rule => rule.id === spec.id);
             const result = makeRule(
                 spec,
-                previous,
+                previous ?? (typeof spec.disabled === 'boolean' ? {disabled:spec.disabled} : undefined),
                 read(previousApproval, spec.id),
             );
 
             wanted.push(result.rule);
+            specifications.push({...spec,flags:spec.flags??'',disabled:result.rule.disabled});
             put(approved, spec.id, result.approval);
         } catch (error) {
             issues.push(`${spec.name}: ${error.message}.`);
         }
     };
+
+    if (metadata.portable) {
+        for (const spec of portableRules({version:1,rules:metadata.portable})) add(spec);
+        return {wanted,approved,issues,specifications};
+    }
 
     metadata.scripts.forEach((script, index) => {
         const name = `Card rule ${index + 1}`;
@@ -1259,7 +1274,7 @@ function buildRules(character, metadata) {
         if (spec) add(spec);
     } catch (error) { issues.push(error.message); }
 
-    return { wanted, approved, issues };
+    return { wanted, approved, issues, specifications };
 }
 
 function updateLiveCharacter(avatar, verified, rules) {
@@ -1651,11 +1666,11 @@ async function captureRecovery(avatar,backupImages=false) {
     const images={},imageHashes={};let size=png.length;
     for(const item of Object.values(provider.fields.extracted??{})) {
         if(has(imageHashes,item.path))continue;
-        const url=localImageURL(item.path);if(!url)throw Error('Existing image mapping cannot be backed up safely.');
+        const url=localMediaURL(item.path);if(!url)throw Error('Existing media mapping cannot be backed up safely.');
         const response=await fetch(url,{cache:'no-store'});
         if(response.status===404){put(imageHashes,item.path,'missing');continue;}
         if(!response.ok)throw Error('An existing mapped image could not be read for backup.');
-        const bytes=new Uint8Array(await response.arrayBuffer());if(!sniffImage(bytes))throw Error('An existing image could not be verified for backup.');
+        const bytes=new Uint8Array(await response.arrayBuffer());if(!sniffImage(bytes)&&!sniffAudio(bytes))throw Error('An existing media file could not be verified for backup.');
         size+=bytes.length;if(size>64_000_000)throw Error('This recovery backup exceeds 64 MB of image bytes. Export a manual backup before using a different import path; no replacement was made.');
         put(imageHashes,item.path,await digest(bytes));
         if(backupImages)put(images,item.path,bytesToBase64(bytes));
@@ -1693,7 +1708,8 @@ async function replaceNative(avatar,parsed,icon) {
 async function restoreReplacement(avatar,before,label='') {
     // Restore backup bytes under new names, so recovery cannot overwrite images
     // another card may now use, including legacy shared-gallery mappings.
-    const restoredPaths={};for(const [path,data] of Object.entries(before.images??{}))put(restoredPaths,path,await uploadImage(base64ToBytes(data)));
+    const folderName=await mediaFolder(await fullCharacter(avatar));
+    const restoredPaths={};for(const [path,data] of Object.entries(before.images??{}))put(restoredPaths,path,await uploadMedia(base64ToBytes(data),folderName));
     const parsed={card:before.card,format:'charx',restoreStamp:before.card.create_date,restoreChat:getContext().getCurrentChatId?.()??before.chat,resolve:async()=>null};
     const character=label.startsWith('Repair images:')?await fullCharacter(avatar):await replaceNative(avatar,parsed,base64ToBytes(before.png));
     if(canonical(cardDocument(character))!==canonical(before.card))throw Error('Restored card data differs from its backup. Backup retained for manual review.');
@@ -1775,11 +1791,84 @@ async function replaceCard(file,avatar) {
 async function exportRecovery(avatar) {
     requireSelected(avatar);const record=await readRecovery(avatar);if(!record)throw Error('No recovery point exists.');
     const zip=new (await getJSZip())();zip.file('original-character.png',base64ToBytes(record.before.png));
-    const manifest=[];let imageIndex=0;for(const [path,data] of Object.entries(record.before.images??{})){const bytes=base64ToBytes(data),name=`images/${++imageIndex}.${sniffImage(bytes)??'bin'}`;zip.file(name,bytes);manifest.push({originalPath:path,backupFile:name});}zip.file('images.json',JSON.stringify(manifest,null,2));
+    const manifest=[];let imageIndex=0;for(const [path,data] of Object.entries(record.before.images??{})){const bytes=base64ToBytes(data),name=`images/${++imageIndex}.${sniffImage(bytes)??sniffAudio(bytes)??'bin'}`;zip.file(name,bytes);manifest.push({originalPath:path,backupFile:name});}zip.file('images.json',JSON.stringify(manifest,null,2));
     zip.file('recovery.json',JSON.stringify(record,null,2));
     zip.file('README.txt','Local recovery backup. Contains character prompt, rules, image paths and view preferences; review before sharing. Original image files are retained in SillyTavern. Chats are not included. Import the original PNG as a separate character for manual inspection; do not overwrite another card blindly.');
     const url=URL.createObjectURL(await zip.generateAsync({type:'blob'}));const a=document.createElement('a');a.href=url;a.download='character-recovery.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     return {exported:true};
+}
+
+async function exportConfiguredCard(avatar=currentCharacter()?.avatar,{download=true}={}) {
+    requireSelected(avatar);
+    const character=await fullCharacter(avatar);requireSelected(avatar);ensureCharacter(character);
+    if(!isEnrolled(avatar))throw Error('Enable / rescan this card’s images before exporting.');
+    const metadata=metadataFor(character),mapping=clone(mapFor(avatar)),initial=canonical(cardData(character));
+    const bridge=window.displayBridge?.api;
+    if(bridge?.exportApiVersion!==1)throw Error('Update and enable Display Bridge before exporting a configured card.');
+    const profile=bridge.exportProfile(avatar),profileRevision=canonical(profile);
+    const built=buildRules(character,metadata),rules=scriptsOf(character),specifications=[];
+    for(const rule of rules.filter(ownedRule)) {
+        const expected=built.wanted.find(x=>x.id===rule.id),approval=read(read(settings().approved,avatar),rule.id);
+        if(!expected||!approval||approval.signature!==ruleSignature(rule)||ruleSignature(expected)!==ruleSignature(rule))throw Error('An installed image rule was edited or has no verified portable definition. Review/resync image rules before exporting.');
+        specifications.push(built.specifications.find(x=>x.id===rule.id));
+    }
+    const declared=supportedAssets(metadata.assets).map(({asset})=>asset),names=new Set(declared.map(a=>a.name));
+    for(const name of Object.keys(mapping))if(!names.has(name)){declared.push({type:localAudioURL(read(mapping,name)?.path)?'audio':'image',name});names.add(name);}
+    for(const adapter of profile?.adapters??[]) {
+        if(adapter.id!=='portrait-dialogue')continue;
+        const source=adapter.source;
+        const references=[...Object.values(source.imageMappings??{}),...(source.variants??[]).flatMap(v=>Object.values(v.images)),...(source.format.entries??[]).map(e=>e.portrait).filter(Boolean),...(source.sceneControls?.roster?.entities??[]).flatMap(e=>[e.portrait,...(e.badges??[]).map(b=>b.image)]).filter(Boolean)];
+        for(const name of references)if(!names.has(name)){declared.push({type:localAudioURL(read(mapping,name)?.path)?'audio':'image',name});names.add(name);}
+    }
+    const trackNames=new Set((profile?.adapters??[]).flatMap(a=>(a.source?.sceneControls?.music?.tracks??[]).map(t=>t.asset)));
+    for(const name of trackNames)if(!names.has(name)){declared.push({type:'audio',name});names.add(name);}
+    const audioNames=new Set([...audioAssets(metadata.assets).map(({asset})=>asset.name),...Object.keys(mapping).filter(n=>localAudioURL(read(mapping,n)?.path)),...trackNames]);
+    const excluded=metadata.assets.filter(a=>!declared.includes(a)&&String(a?.type).toLowerCase()!=='icon');
+    notify('info','Preparing configured CHARX export. Large asset collections may take a moment.');
+    const packaged=await packageImages(declared.filter(a=>!audioNames.has(a.name)).map(asset=>({asset,path:localImageURL(lookupImage(mapping,asset.name)?.path)})),{
+        sniffImage,
+        readImage:async path=>{
+            const response=await fetch(path,{cache:'no-store',redirect:'error'});
+            if(response.status===404)return null;
+            if(!response.ok)throw Error(`Could not read a mapped image (HTTP ${response.status}).`);
+            return new Uint8Array(await response.arrayBuffer());
+        },
+    });
+    const audioPackage=await packageAudio(declared.filter(a=>audioNames.has(a.name)).map(asset=>({asset,path:localAudioURL(read(mapping,asset.name)?.path)})),{readImage:async path=>{const response=await fetch(path,{cache:'no-store',redirect:'error'});if(response.status===404)return null;if(!response.ok)throw Error('Could not read mapped audio.');return new Uint8Array(await response.arrayBuffer());}});
+    const imageCount=packaged.assets.length;packaged.assets.push(...audioPackage.assets);packaged.files.push(...audioPackage.files);packaged.totalBytes+=audioPackage.totalBytes;if(packaged.totalBytes>256000000)throw Error('Combined media export exceeds 256 MB.');
+    const missing=[...audioPackage.missing.map(name=>'Missing audio: '+name),...packaged.missing.map(name=>`Missing image: ${name}`),...excluded.map(a=>`Unbundled asset: ${a?.name??'unnamed'} (${a?.type??a?.ext??'unknown'})`)];
+    const extraIcons=metadata.assets.filter(a=>String(a?.type).toLowerCase()==='icon'&&String(a?.name).toLowerCase()!=='main');
+    missing.push(...extraIcons.map(a=>`Unbundled alternate icon: ${a.name}`));
+    // Re-encode the current avatar so old PNG character chunks do not carry a
+    // second stale card/settings payload inside the exported archive.
+    const avatarResponse=await postJSON('/api/characters/export',{avatar_url:avatar,format:'png'});
+    const bitmap=await createImageBitmap(await avatarResponse.blob());
+    let avatarBlob;
+    try{const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;canvas.getContext('2d').drawImage(bitmap,0,0);avatarBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));canvas.width=canvas.height=0;}finally{bitmap.close();}
+    if(!avatarBlob)throw Error('Could not package the current avatar.');
+    const data=clone(cardData(character));data.extensions={...data.extensions,regex_scripts:rules.filter(rule=>!ownedRule(rule))};
+    const assets=[{type:'icon',name:'main',ext:'png',uri:'embeded://assets/icon/images/main.png'},...packaged.assets];
+    const card=makePortableCard({data,profile,rules:specifications,assets,incomplete:missing});
+    // An embedded profile plus retained source can be larger than either alone.
+    // Never offer a package that our own UI handoff would reject for its size.
+    captureDisplaySource(card,{format:'charx'});
+    const notes=[`Export "${data.name}" as a configured CHARX?`,`${imageCount} images, ${audioPackage.assets.length} audio files; ${Math.ceil(packaged.totalBytes/1048576)} MB of media data; ${specifications.length} portable image rules.`,`${profile?.adapters.length??0} UI adapter(s), including their mappings and appearance defaults.`,
+        'Includes card prompts, greetings, lorebook and other card-authored metadata. Chats, runtime choices and regex permissions are not included.',
+        'The recipient needs V3 Asset Sprites and Display Bridge. Original scripts remain card data; unsupported Lua/state behavior is not converted.'];
+    if(data.extensions.world&&!data.character_book)notes.push('No embedded lorebook was found. A separately linked SillyTavern lorebook is not bundled.');
+    if(missing.length)notes.push('',`INCOMPLETE: ${missing.length} missing or unsupported asset(s).`,...missing.slice(0,15),'Export an explicitly marked incomplete package anyway?');
+    if(!window.confirm(notes.join('\n\n')))return null;
+    requireSelected(avatar);ensureCharacter(character);
+    const latest=await fullCharacter(avatar);requireSelected(avatar);ensureCharacter(latest);
+    if(initial!==canonical(cardData(latest))||canonical(mapFor(avatar))!==canonical(mapping)||profileRevision!==canonical(bridge.exportProfile(avatar)))throw Error('The card, mappings or profile changed during export. Retry with the intended configuration.');
+    const zip=new(await getJSZip())();zip.file('card.json',JSON.stringify(card,null,2));zip.file('assets/icon/images/main.png',new Uint8Array(await avatarBlob.arrayBuffer()));
+    for(const file of packaged.files)zip.file(file.filename,file.bytes);
+    zip.file('DISPLAY-BRIDGE-README.txt','Configured CCV3 export for V3 Asset Sprites and Display Bridge. Use Import card with images and supported UI, then review character regex permission. Card-authored content and scripts are preserved as data, not translated or executed by the exporter. This is not a lossless copy of the original archive.\n'+(missing.length?'INCOMPLETE ASSETS:\n'+missing.join('\n'):'All declared supported images and audio were bundled.'));
+    const filename=(data.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,100)||'character')+(missing.length?'-incomplete':'')+'.charx';
+    const file=new File([await zip.generateAsync({type:'uint8array',compression:'STORE'})],filename,{type:'application/zip'});
+    if(download){const url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+    notify(missing.length?'warning':'success',missing.length?'Exported an incomplete CHARX. See its included notes.':'Configured CHARX export is ready.');
+    return {file,images:imageCount,audio:audioPackage.assets.length,rules:specifications.length,incomplete:missing};
 }
 let recoveryLoading=null;
 async function inspectRecovery(avatar) {
@@ -2280,6 +2369,7 @@ function ensureUI() {
     );
 
     addMenuButton(menu,'v3as-replace','Replace selected card with recovery backup',()=>chooseFile('replace'));
+    addMenuButton(menu,'v3as-export','Export configured card (CHARX)',()=>{void runOperation(()=>exportConfiguredCard());});
 
     addMenuButton(
         menu,
@@ -2346,6 +2436,7 @@ function compatibilityReport({avatar} = {}) {
     const delivery = read(s.displayImports,avatar);
     return {
         status:'available', replacementRecovery:{supported:true,...clone(recoveryCache.get(avatar)??{status:'none'})}, enrolled:isEnrolled(avatar), origin:metadata?.origin ? clone(metadata.origin) : null,
+        audio:{declared:audioAssets(metadata?.assets??assetsOf(character)).length,missing:audioAssets(metadata?.assets??assetsOf(character)).filter(({asset})=>!localAudioURL(read(map,asset.name)?.path)).map(({asset})=>asset.name).slice(0,100)},
         assets:{declared:assets.length,mapped:assets.length-missing.length,missingCount:missing.length,
             missing:missing.slice(0,100).map(({asset})=>String(asset.name).slice(0,160))},
         regex:{allowed:isTrusted(avatar),extensionEnabled:!extension_settings.disabledExtensions?.includes('regex'),
@@ -2361,13 +2452,15 @@ window.v3sprites = {
     // Explicit identity, read-only lookups, no automatic enrollment or uploads.
     api: Object.freeze({
         apiVersion: 1,
+        audioApiVersion:1,
+        resolveAudio({avatar,reference}={}){const matches=(getContext().characters??[]).filter(c=>c.avatar===avatar);if(typeof avatar!=='string'||matches.length!==1||!isEnrolled(avatar)||!characterLifecycle.ensure(matches[0])?.active)return {status:'not-enrolled'};const url=localAudioURL(read(mapFor(avatar),reference)?.path);return url?{status:'resolved',url}:{status:'missing'};},
         compatibilityApiVersion:1,
         getCompatibility:compatibilityReport,
         listImages({avatar}={}) {
             const matches=(getContext().characters??[]).filter(c=>c.avatar===avatar);
             if(typeof avatar!=='string'||matches.length!==1||!isEnrolled(avatar)||!characterLifecycle.ensure(matches[0])?.active)return {status:'unavailable',images:[],truncated:false};
             const map=mapFor(avatar),metadata=read(settings().metadata,avatar);
-            const names=[...new Set([...imageAssets(metadata?.assets??assetsOf(matches[0])).map(({asset})=>asset.name),...Object.keys(map)])].filter(n=>typeof n==='string'&&n.trim()&&n.length<=256);
+            const names=[...new Set([...imageAssets(metadata?.assets??assetsOf(matches[0])).map(({asset})=>asset.name),...Object.keys(map).filter(name=>!localAudioURL(read(map,name)?.path))])].filter(n=>typeof n==='string'&&n.trim()&&n.length<=256);
             return {status:'available',truncated:names.length>2000,images:names.slice(0,2000).map(name=>({name,status:localImageURL(read(map,name)?.path)?'resolved':'missing'}))};
         },
         resolveImage({ avatar, reference } = {}) {
@@ -2445,6 +2538,7 @@ window.v3sprites = {
     }),
 
     import: file => runOperation(() => importCard(file)),
+    exportCard: (avatar=currentCharacter()?.avatar,options) => runOperation(() => exportConfiguredCard(avatar,options)),
     attach: (file,avatar=currentCharacter()?.avatar) => runOperation(() => attachSource(file,avatar)),
     recovery: Object.freeze({
         version:1,

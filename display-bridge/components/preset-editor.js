@@ -2,7 +2,7 @@ import { createActionStore } from '../core/actions.js';
 import { resolveImage } from '../integrations/assets.js';
 import { DEFAULT_PRESET, validatePortraitPreset, parsePortraitDialogue, portraitActions } from '../adapters/portrait-dialogue.js';
 import { createPortraitDialogue } from './portrait-dialogue.js';
-import { createImageMappingEditor } from './image-mapping-editor.js';
+import { createImageMappingEditor, createImageSuggestions } from './image-mapping-editor.js';
 
 export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',review,close}){
     source=validatePortraitPreset(source);
@@ -20,14 +20,16 @@ export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',revie
     const references=new Set(source.format.entries?.map(e=>e.portrait).filter(Boolean)??[]);
     const identityLabels=Object.create(null);
     for(const e of source.format.entries??[])if(e.portrait)identityLabels[e.portrait]=e.speaker||e.portrait;
-    for(const b of parsePortraitDialogue(message,source).blocks){if(b.portrait){references.add(b.portrait);identityLabels[b.portrait]??=b.speaker||b.portrait;}if(b.background){references.add(b.background);identityLabels[b.background]??='Scene background';}for(const p of b.portraits??[]){references.add(p.image);identityLabels[p.image]??=p.label||p.image;if(p.hover){references.add(p.hover);identityLabels[p.hover]??=(p.label||p.image)+' (hover)';}}}
+    for(const b of parsePortraitDialogue(message,source).blocks){if(b.portrait){references.add(b.portrait);identityLabels[b.portrait]??=b.speaker||b.portrait;}if(b.background){references.add(b.background);identityLabels[b.background]??='Scene background';}for(const layer of b.layers??[]){references.add(layer.asset);identityLabels[layer.asset]??='Scene '+layer.role;}for(const p of b.portraits??[]){references.add(p.image);identityLabels[p.image]??=p.label||p.image;if(p.hover){references.add(p.hover);identityLabels[p.hover]??=(p.label||p.image)+' (hover)';}}}
+    for(const entity of source.sceneControls?.roster?.entities??[]){if(entity.portrait)references.add(entity.portrait);for(const b of entity.badges??[])if(b.image)references.add(b.image);}
     for(const name of Object.keys(source.portraitLabels??{}))references.add(name);
     for(const v of source.variants)for(const name of Object.keys(v.images))references.add(name);
     Object.assign(identityLabels,source.portraitLabels??{});
     for(const name of references)if(!suggestions.includes(name))suggestions.push(name);
     host.append(node('p',inventory?.status==='available'?`${inventory.images.length} asset names available${inventory.truncated?' (list limited to 2,000)':''}. Names are suggestions; no similar-name matching is performed.`:'Asset suggestions are unavailable. Enter exact names, or update/enrol the card with V3 Asset Sprites.'));
     if(references.size)host.append(node('p','References in this profile/sample: '+[...references].slice(0,30).join(', ')));
-    const general=createImageMappingEditor({avatar,initial:source.imageMappings,suggestions,title:'Default image replacements'});host.append(general.host);
+    const suggestionList=createImageSuggestions(suggestions);host.append(suggestionList);
+    const general=createImageMappingEditor({avatar,initial:source.imageMappings,suggestionList,title:'Default image replacements'});host.append(general.host);
     const community=source.format.kind==='community';
     const appearances=group('Appearance choices'),variantLabel=input(appearances,'Appearance selector label',source.variantLabel),optionList=node('div');
     appearances.append(node('p','Each option changes all of its listed portraits together. Choose the image for each character; the original references stay unchanged. Empty rows use the usual image mapping.'));
@@ -50,8 +52,21 @@ export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',revie
     function option(v={id:'option-'+crypto.randomUUID(),label:'',images:{}},expanded=false){
         const row=node('details');row.className='db-appearance-option';row.open=expanded;const heading=node('summary',v.label.trim()||'New appearance option');row.append(heading);
         const label=input(row,'Option label',v.label);label.maxLength=80;
-        const mappings=createImageMappingEditor({avatar,initial:v.images,suggestions,title:'Images for this option',knownReferences:[...identityInputs.keys()],referenceLabels:identityLabels});row.append(mappings.host);
-        row.option={id:v.id,label,mappings};label.addEventListener('input',()=>{heading.textContent=label.value.trim()||'New appearance option';updateDefaults();});button('Remove appearance option',()=>{row.remove();updateDefaults();},row);optionList.append(row);updateDefaults();
+        // A closed option retains its data without allocating rows or listeners.
+        // Reading/validating a draft must not expand it or lose untouched mappings.
+        let editor=null;
+        const mappings={
+            read:()=>editor?editor.read():{...v.images},
+            unresolved:()=>editor?editor.unresolved():Object.values(v.images).filter(name=>resolveImage(avatar,name).status!=='resolved'),
+            refreshLabels:()=>editor?.refreshLabels(),
+        };
+        function mount(){
+            if(editor||!row.open)return;
+            editor=createImageMappingEditor({avatar,initial:v.images,suggestionList,title:'Images for this option',knownReferences:[...identityInputs.keys()],referenceLabels:identityLabels});
+            row.insertBefore(editor.host,remove);
+        }
+        row.addEventListener('toggle',mount);
+        row.option={id:v.id,label,mappings};label.addEventListener('input',()=>{heading.textContent=label.value.trim()||'New appearance option';updateDefaults();});const remove=button('Remove appearance option',()=>{row.remove();updateDefaults();},row);optionList.append(row);mount();updateDefaults();
     }
     for(const v of source.variants)option(v);
     updateDefaults(source.appearance?.defaultVariant??'original');
@@ -65,7 +80,7 @@ export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',revie
     }else if(source.format.kind==='tagged'){
         source.format.entries.forEach((e,i)=>{bindings.append(node('p',`${e.kind}: ${e.tag??'portrait-name tags'}`));if(e.speaker)fields[i]=input(bindings,'Speaker label for '+(e.tag??'portrait-name tags'),e.speaker);});
         bindings.append(node('p','Tag grammar, source styles and status field order are preserved. Image replacements above use the original source image names.'));
-    }else bindings.append(node('p',source.format.kind==='scene-fragments'?'Recognized background, cast, dialogue and status fragments are assembled within each message. Source offsets, effect layers and scripts remain excluded. Exact image replacements work for background and hover images.':community?'The reviewed profile format supplies its eleven text fields.':'The scene supplies background, portraits, speaker, dialogue and time/day/date/location fields. Background and hover images can also be replaced by exact name.'));
+    }else bindings.append(node('p',source.format.kind==='scene-fragments'?'Recognized background, cast, dialogue and status fragments are assembled within each message. Reviewed scene details are preserved where declared: offsets, tooltips, layers and text formatting. Source state and scripts remain excluded. Exact replacements work for layer, background and hover images.':community?'The reviewed profile format supplies its eleven text fields.':'The scene supplies background, portraits, speaker, dialogue and time/day/date/location fields. Background and hover images can also be replaced by exact name.'));
     const metadata=group('Metadata labels'),metadataInputs={};
     for(const k of ['time','day','date','location'])metadataInputs[k]=input(metadata,k[0].toUpperCase()+k.slice(1)+' label',source.metadataLabels?.[k]??k);
     metadata.hidden=community;

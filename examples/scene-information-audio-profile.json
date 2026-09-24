@@ -1,0 +1,88 @@
+{
+  "kind": "display-bridge-profile",
+  "schemaVersion": 1,
+  "adapters": [
+    {
+      "id": "portrait-dialogue",
+      "version": 7,
+      "source": {
+        "format": {
+          "kind": "scene-fragments",
+          "backgrounds": [
+            "numbered-four"
+          ],
+          "castFields": 4,
+          "counts": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "dialogueOpeners": [
+            "double"
+          ],
+          "textTags": true,
+          "details": {
+            "version": 1,
+            "castMetadata": true,
+            "layers": true,
+            "periodAssets": {
+              "sky": "night"
+            },
+            "offsetAliases": {
+              "@guide": "20%",
+              "@curator": "20%"
+            }
+          }
+        },
+        "variantLabel": "Appearance",
+        "variants": [],
+        "theme": {
+          "accent": "#8499b1",
+          "background": "#26313e",
+          "text": "#f2f4f8",
+          "pattern": "plain",
+          "position": "center"
+        },
+        "sceneControls": {
+          "version": 1,
+          "roster": {
+            "title": "Guide information",
+            "entities": [
+              {
+                "id": "alex",
+                "label": "Alex",
+                "portrait": "guide",
+                "badges": [
+                  {
+                    "id": "friend",
+                    "label": "Friend",
+                    "image": "guide-smile"
+                  }
+                ]
+              },
+              {
+                "id": "river",
+                "label": "River",
+                "portrait": "curator"
+              }
+            ]
+          },
+          "music": {
+            "title": "Observatory music",
+            "volume": 0.2,
+            "loop": false,
+            "tracks": [
+              {
+                "id": "evening",
+                "label": "Evening study",
+                "asset": "evening-chime"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

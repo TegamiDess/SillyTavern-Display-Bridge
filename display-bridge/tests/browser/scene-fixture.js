@@ -21,3 +21,20 @@ export const sceneMessage=(family='four',id='1',count=2)=>
     '<#'+id+'><img src="room"_'+(family==='five'?'"daytime"_"2026-09-22"_"18:30"_"Observatory"':'"sky"_"weather"_"18:30"')+'><'+count+'>'+
     Array.from({length:count},(_,i)=>'<img="'+(i%2?'curator':'guide')+'"_"'+(i%2?'curator-smile':'guide-smile')+'"><ct="0px"_"A guide"'+(family==='five'?'':'_"On duty"_"Ready"')+'>').join('')+
     '<div><div tn="'+id+'"><text="dialogue">Welcome to the observatory.</text><text="narration">The guides prepare the telescope.</text></div></div>';
+
+// Stage-3 fixture: reviewed extra capture roles, without private art or text.
+export function detailedSceneRules(family='four') {
+    const rules=sceneRules(family),fields=family==='five'?2:4;
+    if(family==='four')rules[0].out='<img class="fullBgImage2" src="{{raw::$3}}"><img class="fullBgImage3" src="{{raw::$4}}">'+rules[0].out+
+        '{{#if {{equal::sky::$3}}}}<img class="backgroundImage3" src="{{raw::$2}}">{{/if}}';
+    for(let count=1;count<=4;count++){
+        let output='';
+        for(let i=0;i<count;i++){
+            const base=1+i*(fields+2);output+='<div class="char-slot"><img class="char-img" src="{{raw::$'+base+'}}" style="top: $'+(base+2)+'"><img class="char-img-hover" src="{{raw::$'+(base+1)+'}}" style="top: $'+(base+2)+'">';
+            for(let j=0;j<fields-1;j++)output+='<div data-tooltip="$'+(base+3+j)+'"></div>';
+            output+='</div>';
+        }
+        rules[count+1].out=output;
+    }
+    rules.push(rule('@guide|@curator','20%'));return rules;
+}

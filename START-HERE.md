@@ -1,6 +1,8 @@
 # Start here: import a card and see its pictures
 
-For Display Bridge **0.14.2** and V3 Asset Sprites **0.6.4**. This is a PC-first testing release.
+For Display Bridge **0.19.0** and V3 Asset Sprites **0.9.0**. This is a PC-first testing release.
+
+**Want to share a card you've set up?** Select it, open the extensions menu beside the chat input and choose **Export configured card (CHARX)**. Review the summary and download the file. Your recipient uses **Import card with images and supported UI** with both updated extensions. The pictures and applied UI profile travel together. [What gets included](EXPORT.md).
 
 You do not need to write code or edit JSON for a supported import. Use your original **.charx** file. It is a card file that can also contain pictures and other files.
 
@@ -42,7 +44,7 @@ Use this when you want a normal character card with images in its messages.
 
 For ordinary pictures, **Enable Display Bridge for this character** can stay off. You do not need Witchcure, Stream window or Portrait and dialogue switches. A “UI import: unsupported” result can be normal for a card with no special UI; check whether its images work separately.
 
-Images appear when a message refers to them. Importing a card does not put every picture it contains into the chat. Existing messages can be checked without an API connection; generating new replies still needs your usual model connection. This importer handles supported image references, not every possible script, audio or video asset.
+Images appear when a message refers to them. Importing a card does not put every picture it contains into the chat. Existing messages can be checked without an API connection; generating new replies still needs your usual model connection. The importer also stores supported local MP3/WAV/Ogg assets. Playback needs a configured scene profile; importing audio does not execute Risu music scripts. Video and arbitrary scripts remain unsupported. Try `examples/scene-information-audio.charx` for a neutral drawer/music demo; [instructions](display-bridge/SCENE-CONTROLS.md).
 
 ### Optional: small images that expand
 
@@ -137,3 +139,26 @@ Send the extension versions, your ST version, what you clicked, what you expecte
 The original Witchcure, streamer and Afternoon cards are **not bundled** with this release. Use your own originals. The GitHub package also includes neutral `examples/assembled-scene-four.charx` and `assembled-scene-five.charx` for a separate composed-scene test; those are not copies of the three cards above.
 
 For more detail: [technical README](display-bridge/README.md), [compatibility/recovery](display-bridge/COMPATIBILITY.md), [bilingual dialogue](display-bridge/BILINGUAL-DIALOGUE.md).
+
+## Where are imported files?
+
+From V3 Asset Sprites 0.8.1, new PNG/JPEG/GIF/WebP/BMP images and MP3/WAV/Ogg audio go into:
+
+```text
+data/default-user/user/images/
+  V3 - Card name - unique identity/
+    v3asset-unique-file.png
+    v3audio-unique-file.wav
+```
+
+The identity separates two cards with the same name. Asset names inside the card still work through the saved mappings. Existing files are not automatically moved or deleted. **Repair images** with the original archive writes replacement images/audio into the card folder and retains old files for recovery. Do not move mapped files manually: their saved paths would break.
+
+Older imports may use `user/files/` or native character galleries. AVIF still uses `user/files/`, because the tested ST media-upload endpoint does not accept AVIF. Recovery journals/backups also remain in `user/files/`; they are not card media. This is unrelated to SVG.
+
+## New neutral state/startup test
+
+Import `examples/scene-state-startup.charx`. Then open **Display Bridge → Conversation state**, choose a starting branch, and click **Initialize / rebuild scene state**. That creates the selected greeting and initial facts. This fixture needs an explicit v8 profile; original Risu state scripts are not automatically converted. [What works, how updates happen, and recovery](display-bridge/SCENE-STATE.md).
+
+## Automatic scene trial
+
+Import `examples/scene-auto-import.charx`, inspect Scene import coverage, then initialize Conversation state in the saved chat. Press Play in the Chat music bar below the chat. It loops and keeps playing during generation; Pause stops it and Hide only hides its controls. [Full steps and current limitations](display-bridge/SCENE-AUTO-IMPORT.md).

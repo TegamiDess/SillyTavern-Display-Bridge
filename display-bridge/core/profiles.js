@@ -1,4 +1,6 @@
-import {inspectSceneRule, assembleSceneRules} from '../adapters/scene-recognition.js';
+import {inspectSceneRule, assembleSceneRules, sceneOffsetAliases} from '../adapters/scene-recognition.js';
+import {assembleSceneImport} from '../adapters/scene-import.js';
+import {coveredSourceMacros} from '../adapters/scene-source-context.js';
 import { readPresentationStyles } from '../adapters/presentation-style.js';
 import { inspectPresentationRule } from '../adapters/presentation-recognition.js';
 import { DEFAULT_PRESET } from '../adapters/portrait-dialogue.js';
@@ -24,7 +26,7 @@ export function validateProfile(input, css) {
     const seen = new Set();
     const adapters = input.adapters.map(adapter=>{
         object(adapter,['id','version','source']);
-        if (!IDS.has(adapter.id) || ![1,...(adapter.id==='portrait-dialogue'?[2,3,4,5]:adapter.id==='witchcure'?[2]:[])].includes(adapter.version) || seen.has(adapter.id)) fail('unknown, repeated or unsupported adapter');
+        if (!IDS.has(adapter.id) || ![1,...(adapter.id==='portrait-dialogue'?[2,3,4,5,6,7,8,9,10,11]:adapter.id==='witchcure'?[2]:[])].includes(adapter.version) || seen.has(adapter.id)) fail('unknown, repeated or unsupported adapter');
         seen.add(adapter.id);
         if(adapter.id==='portrait-dialogue') {const source=validatePortraitPreset(adapter.source);if(adapter.version<portraitVersion(source))fail('portrait fields require adapter version '+portraitVersion(source));return {id:adapter.id,version:adapter.version,source};}
         if (adapter.id !== 'witchcure') {
@@ -48,9 +50,10 @@ export function discoverProfile(source, css) {
     const rules = Array.isArray(risu.customScripts) ? risu.customScripts : [];
     const effects = (Array.isArray(risu.triggerscript) ? risu.triggerscript : []).flatMap(t=>Array.isArray(t.effect)?t.effect:[]);
     const consumed = new Map(), portraitResults = new Map();
+    let assembly=null;
     const galleryEffect = effect => effect.type==='triggerlua' && typeof effect.code==='string' && ['extractAllDcBlocks','processDcBlock','PNUM','PCONT'].every(marker=>effect.code.includes(marker));
     const details = () => ({
-        version:1, explicitProfile:Object.hasOwn(source,'profile'),
+        version:1, explicitProfile:Object.hasOwn(source,'profile'),sceneAssembly:assembly?.coverage??null,
         rules:rules.slice(0,500).map((rule,index)=>({
             number:index+1, label:String(rule.label || `Card rule ${index+1}`).slice(0,120), type:String(rule.type || 'unknown').slice(0,60),
             status:consumed.has(index)?'adapted':rule.type==='disabled'?'disabled':!rule.in&&!rule.out?'no-op':rule.type==='editdisplay'?'not-translated':'not-run',
@@ -65,8 +68,11 @@ export function discoverProfile(source, css) {
         const profile = validateProfile(source.profile,css);
         if (rules.length || effects.length) notes.push('An explicit profile was used. Other imported scripts were not executed.');
         adapters.push(...profile.adapters);
-        return { profile, notes, discovery:details() };
+        const unresolved=adapters.some(a=>a.source?.format?.kind==='scene-fragments'&&!coveredSourceMacros(source,a.source.sceneState?.request))&&source.requiredMacros?.length;
+        if(unresolved){assembly={coverage:[{feature:'Startup / prompt macros',status:'unsupported',reason:'The explicit profile is preserved, but source greeting/prompt macros still require review: '+source.requiredMacros.join(', ')+'.'}]};notes.push(assembly.coverage[0].reason);}
+        return { profile, notes, discovery:details(), ...(unresolved?{requiresReview:true}:{}) };
     }
+    if(source.suppressDiscovery===true)return {profile:null,notRequested:true,notes:['This configured export includes images only; UI discovery was deliberately omitted.'],discovery:details()};
     rules.forEach((rule,index)=>{
         if (rule.type === 'editdisplay' && rule.in === String.raw`\[Assets:(.*?)\|Chat:(.*?)\|Time:(.*?)\|AkaChat:(.*?)\]`) {
             if (!adapters.some(x=>x.id==='media-panel')) adapters.push({id:'media-panel',version:1});
@@ -97,6 +103,7 @@ export function discoverProfile(source, css) {
             for(const result of supported)if(result.entry?.style)result.reason+=' Imported bounded colour, typography and layout tokens; unsupported CSS remains omitted.';
             for(const index of portraitResults.keys())consumed.set(index,'portrait-dialogue');
             if(supported[0].source.format.kind==='scene-fragments')rules.forEach((rule,index)=>{if(rule.type==='editdisplay'&&rule.in==='<0>'&&['','</div>'].includes(String(rule.out).trim())){consumed.set(index,'portrait-dialogue');portraitResults.set(index,{reason:'Recognized an empty cast; the scene can show a background and dialogue without portraits.'});}});
+            if(supported[0].source.format.details?.castMetadata)rules.forEach((rule,index)=>{const names=sceneOffsetAliases(rule);if(names.length&&names.every(name=>supported[0].source.format.details.offsetAliases[name]===rule.out)){consumed.set(index,'portrait-dialogue');portraitResults.set(index,{reason:'Literal portrait-position aliases compiled into a bounded lookup; source regex is not executed.'});}});
             notes.push('Presentation bindings were recognized. The preset supplies its own layout and visibility controls; only supported style tokens are extracted. Other source CSS, appearance choices and scripts are not executed.');
         }else{
             for(const [index,result] of portraitResults)if(result.status==='supported')portraitResults.set(index,{...result,status:'unsupported',reason:'Other portrait/dialogue rules are incompatible or use a different configuration. Choose one explicit profile; no portrait preset was enabled automatically.'});
@@ -114,14 +121,28 @@ export function discoverProfile(source, css) {
             });
         } catch (error) { notes.push(`Witchcure was not enabled: ${error.message}`); }
     }
+    const scene=adapters.find(a=>a.id==='portrait-dialogue'&&a.source.format.kind==='scene-fragments');
+    if(scene){
+        assembly=assembleSceneImport(source,scene.source);
+        scene.source=assembly.preset;scene.version=portraitVersion(scene.source);
+        for(const [index,reason] of assembly.adaptedRules){consumed.set(index,'portrait-dialogue');portraitResults.set(index,{reason});}
+        for(const item of assembly.coverage)notes.push(`${item.feature}: ${item.status}. ${item.reason}`);
+    }
     const otherDisplay = rules.filter((rule,index)=>rule.type==='editdisplay' && !consumed.has(index) && rule.out?.trim()).length;
     if (otherDisplay) notes.push(`${otherDisplay} other display rule(s) are outside this profile; image rules remain the image provider's responsibility.`);
     const nonDisplay = rules.filter((rule,index)=>!consumed.has(index)&&rule.type && !['editdisplay','disabled'].includes(rule.type) && (rule.in || rule.out)).length;
     if (nonDisplay) notes.push(`${nonDisplay} input/output rule(s) are not run by Display Bridge.`);
-    if (effects.length) notes.push(`${effects.length} original trigger effect(s) were not executed. Only the reviewed adapters' presentation actions are available.`);
+    if (effects.length) notes.push(`${effects.length} original trigger effect(s) were not executed. Only behavior represented by the reviewed adapters is available; see per-effect results.`);
     if (adapters.some(x=>['media-panel','gallery'].includes(x.id))) notes.push('Stream/gallery use the reviewed built-in layouts, not arbitrary imported HTML or Lua.');
     if (!adapters.length && !rules.length && !effects.length) notes.push('No supported UI rules were found in this source. Enabling a panel checkbox cannot supply missing templates. Attach the original CHARX with V3 to recover its UI source.');
-    return {profile:adapters.length ? validateProfile({kind:PROFILE_KIND,schemaVersion:1,adapters},css) : null, notes, discovery:details()};
+    const discovery=details();
+    if(assembly){let offset=0;for(const [i,t] of (risu.triggerscript??[]).entries()){
+        if(assembly.adaptedTriggers.has(i))for(let j=0;j<(t.effect?.length??0);j++){
+            const effect=discovery.effects[offset+j];if(effect){effect.status='adapted';effect.reason='Finite relationship-to-badge lookup compiled; original trigger code is not executed.';}
+        }
+        offset+=t.effect?.length??0;
+    }}
+    return {profile:adapters.length ? validateProfile({kind:PROFILE_KIND,schemaVersion:1,adapters},css) : null, notes, discovery, requiresReview:!!assembly?.coverage.some(c=>c.status!=='ready')};
 }
 
 export function profileFromSettings(settings, css) {
@@ -145,4 +166,4 @@ export function profileConflicts(profile, rules) {
     return rules.filter(rule=>rule && !rule.disabled && !rule.promptOnly && typeof rule.findRegex==='string' && !standaloneImage(rule) && markers.some(marker=>rule.findRegex.includes(marker))).map(rule=>String(rule.scriptName ?? rule.id ?? 'Unnamed display rule').slice(0,120));
 }
 
-export function portraitVersion(source) {if(['appearance','portraitLabels'].some(k=>Object.hasOwn(source??{},k)))return 5;if(source?.format?.kind==='scene-fragments')return 4;if(['imageMappings','metadataLabels','defaults'].some(k=>Object.hasOwn(source??{},k)))return 3;return source?.format?.entries?.some(e=>e.style!==undefined||e.placement!==undefined)?2:1;}
+export function portraitVersion(source) {if(source?.format?.normalization?.displayCleanup!==undefined)return 11;if(source?.sceneState?.version===3||source?.format?.normalization!==undefined)return 10;if(source?.sceneState!==undefined)return source.sceneState.version===2?9:8;if(source?.sceneControls!==undefined)return 7;if(source?.format?.details!==undefined)return 6;if(['appearance','portraitLabels'].some(k=>Object.hasOwn(source??{},k)))return 5;if(source?.format?.kind==='scene-fragments')return 4;if(['imageMappings','metadataLabels','defaults'].some(k=>Object.hasOwn(source??{},k)))return 3;return source?.format?.entries?.some(e=>e.style!==undefined||e.placement!==undefined)?2:1;}

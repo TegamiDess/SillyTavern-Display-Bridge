@@ -2,7 +2,7 @@
 // portrait details remain transient; message text and story state are excluded.
 export function createPreferences({state,save}) {
     const validMode=x=>['auto','roster','report'].includes(x);
-    const validView=v=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===5&&['visual','image','dialogue','console'].every(k=>typeof v[k]==='boolean')&&typeof v.variant==='string'&&/^[A-Za-z][\w-]{0,79}$/.test(v.variant);
+    const validView=v=>v&&typeof v==='object'&&!Array.isArray(v)&&[5,7].includes(Object.keys(v).length)&&Object.keys(v).every(k=>['visual','image','dialogue','console','variant','music','volume'].includes(k))&&(!Object.hasOwn(v,'music')&&!Object.hasOwn(v,'volume')||(typeof v.music==='boolean'&&Number.isInteger(v.volume)&&v.volume>=0&&v.volume<=10))&&['visual','image','dialogue','console'].every(k=>typeof v[k]==='boolean')&&typeof v.variant==='string'&&/^[A-Za-z][\w-]{0,79}$/.test(v.variant);
     const validPreset=v=>v&&typeof v==='object'&&Object.keys(v).every(k=>['signature','state','previous'].includes(k))&&typeof v.signature==='string'&&v.signature.length<=100000&&validView(v.state)&&(v.previous===null||validView(v.previous));
     const copy=x=>JSON.parse(JSON.stringify(x));
     function getPreset(identity,chat,signature){const v=store()[key(identity,chat)]?.preset;return validPreset(v)&&v.signature===signature?copy(v):null;}

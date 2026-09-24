@@ -26,4 +26,5 @@ const bridge = createDisplayBridge({
     afterRender: element => { if (element) addCopyToCodeBlocks(globalThis.jQuery(element)); },
 });
 window.displayBridge = bridge;
+globalThis.displayBridgeSceneRequest = (...args) => bridge.interceptRequest(...args);
 bridge.start();

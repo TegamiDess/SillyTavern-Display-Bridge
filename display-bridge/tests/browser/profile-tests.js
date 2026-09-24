@@ -2,6 +2,7 @@ import { captureDisplaySource, createDisplayHandoff } from './display-handoff.js
 import { discoverProfile, validateProfile } from '/extension/core/profiles.js';
 import { createDisplayBridge } from '/extension/core/bridge.js';
 import { messageFormatting } from './formatter.js';
+import {sceneImportCard} from '/extension/tests/fixtures/scene-import.js';
 
 const definition = {kind:'display-bridge-profile',schemaVersion:1,adapters:[{id:'media-panel',version:1},{id:'gallery',version:1}]};
 const card = () => ({spec:'chara_card_v3',spec_version:'3.0',data:{name:'Import fixture',description:'Private story text',first_mes:'Private greeting',assets:[],extensions:{display_bridge_profile:definition}}});
@@ -9,6 +10,13 @@ const envelope = (avatar='test-b.png',importId=crypto.randomUUID()) => ({handoff
 
 export async function runProfileTests({test,assert,setup,wait,ctx,characters,extension_settings,bridge}) {
     const state = avatar => extension_settings.display_bridge.profiles[avatar];
+    await test('Partial automatic scene assembly stays pending on a fresh character with feature-level reasons',()=>{
+        setup(undefined,{stream:false});const input=sceneImportCard();input.data.first_mes='{{getvar::opening}}';
+        const item=envelope();item.source=captureDisplaySource(input);const result=bridge().api.receiveImport(item);
+        assert(result.status==='review'&&state('test-b.png').pendingProfile&&!state('test-b.png').enabled);
+        assert(result.discovery.sceneAssembly.some(c=>c.feature==='Startup / prompt macros'&&c.status==='unsupported'));
+        assert(state('test-b.png').pendingProfile.adapters[0].version===9);
+    });
     await test('Import source excludes prompts, assets and state; snapshots are independent',()=>{
         const input=card(); input.data.extensions.risuai={backgroundHTML:'<style>.sample{color:red}</style>',customScripts:[{type:'editdisplay',in:'x',out:'y',private:'omit'}],triggerscript:[{effect:[{type:'triggerlua',code:'untrusted',private:'omit'}]}],variables:{secret:1}};
         const source=captureDisplaySource(input), text=JSON.stringify(source);
@@ -83,7 +91,7 @@ export async function runProfileTests({test,assert,setup,wait,ctx,characters,ext
             if(url==='/api/files/sanitize-filename')return response({fileName:body.fileName});
             if(url==='/api/images/folders')return response([]);
             if(url==='/api/characters/get'){assert(body.avatar_url===avatar);return response(imported);}
-            if(url==='/api/files/upload'){uploaded++;return response({path:'user/files/import-fixture.png'});}
+            if(url==='/api/files/upload'||url==='/api/images/upload'){uploaded++;return response({path:'user/files/import-fixture.png'});}
             if(String(url).startsWith('/api/'))throw Error('Unexpected mock API '+url);
             return globalThis.fetch(url,options);
         }};
@@ -109,7 +117,7 @@ export async function runProfileTests({test,assert,setup,wait,ctx,characters,ext
             if(url==='/api/files/sanitize-filename')return reply({fileName:body.fileName});
             if(url==='/api/images/folders')return reply([]);
             if(url==='/api/characters/get')return reply(imported);
-            if(url==='/api/files/upload'){uploaded++;throw Error('No uploads expected');}
+            if(url==='/api/files/upload'||url==='/api/images/upload'){uploaded++;throw Error('No uploads expected');}
             if(String(url).startsWith('/api/'))throw Error('Unexpected API '+url);
             return globalThis.fetch(url,options);
         }};

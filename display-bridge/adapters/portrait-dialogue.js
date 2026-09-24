@@ -1,3 +1,5 @@
+import { validateSceneControls } from './scene-controls.js';
+import { validateSceneState } from './scene-state.js';
 import { validateImageMappings, appearanceChoices, appearanceDefault } from './portrait-mappings.js';
 import { validatePresentationFormat, parsePresentation } from './presentation-formats.js';
 import { codeRanges } from '../core/parser.js';
@@ -11,7 +13,9 @@ const text=(x,max=160)=>typeof x==='string'&&x.length>0&&x.length<=max&&!/[\u000
 export const DEFAULT_PRESET={format:{kind:'fields',open:'[Scene|',close:']',fields:{speaker:'speaker',dialogue:'text',portrait:'image',time:'time',day:'day',date:'date',location:'place'}},variantLabel:'Appearance',variants:[],theme:{accent:'#ddae46',background:'#fff8e6',text:'#493a22',pattern:'gingham',position:'center'}};
 export function validatePortraitPreset(input){
     if(JSON.stringify(input)?.length>100000)fail('configuration too large');
-    shape(input,['format','variantLabel','variants','theme','imageMappings','metadataLabels','defaults','appearance','portraitLabels']);
+    shape(input,['format','variantLabel','variants','theme','imageMappings','metadataLabels','defaults','appearance','portraitLabels','sceneControls','sceneState']);
+    if(input.sceneState!==undefined){if(input.format?.kind!=='scene-fragments')fail('scene state needs scene fragments');validateSceneState(input.sceneState,input.sceneControls);}
+    if(input.sceneControls!==undefined){if(input.format?.kind!=='scene-fragments')fail('scene controls need scene fragments');validateSceneControls(input.sceneControls);}
     const extended=['tagged','community','scene','scene-fragments'].includes(input.format?.kind);
     if(extended)validatePresentationFormat(input.format);
     else {
@@ -86,9 +90,10 @@ export function parsePortraitDialogue(source,config,excluded=[],depth=0){
     return result;
 }
 export function portraitActions(config){return compileActions({schemaVersion:1,namespace:'portrait-dialogue',variables:{
+    ...(config.sceneControls?.music?{music:{type:'boolean',default:true},volume:{type:'number',default:Math.round(config.sceneControls.music.volume*10),min:0,max:10}}:{}),
     ...Object.fromEntries(['visual','image','dialogue','console'].map(k=>[k,{type:'boolean',default:config.defaults?.[k]??true}])),
     variant:{type:'enum',default:appearanceDefault(config),values:appearanceChoices(config).map(v=>v.id)},
-},actions:{...Object.fromEntries(['visual','image','dialogue','console'].map(variable=>[variable,[{op:'toggle',variable}]])),
+},actions:{...(config.sceneControls?.music?{music:[{op:'toggle',variable:'music'}],...Object.fromEntries(Array.from({length:11},(_,value)=>['volume-'+value,[{op:'set',variable:'volume',value}]]))}:{}),...Object.fromEntries(['visual','image','dialogue','console'].map(variable=>[variable,[{op:'toggle',variable}]])),
     ...Object.fromEntries(appearanceChoices(config).map(v=>[ 'choose-'+v.id,[{op:'set',variable:'variant',value:v.id}]])),
-    reset:['visual','image','dialogue','console','variant'].map(variable=>({op:'reset',variable})),
+    reset:['visual','image','dialogue','console','variant',...(config.sceneControls?.music?['music','volume']:[])].map(variable=>({op:'reset',variable})),
 }});}

@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Audio interaction crash isolation</title>
+<style>body{font:16px system-ui;background:#222;color:#eee;padding:20px}section{display:inline-block;vertical-align:top;width:30%;padding:12px;border:1px solid #888}button{padding:10px;margin:5px}pre{white-space:pre-wrap}</style>
+<h1>Audio interaction crash isolation</h1><p>All players are muted. This page uses neutral generated audio only.</p>
+<div id="cases"></div><button id="stress">Run 50 managed lifecycle cycles</button><pre id="result">Not run</pre><pre id="log"></pre>
+<script type="module">
+import {createSceneAudio} from '/extension/core/scene-audio.js';
+import {neutralWav} from '/extension/tests/fixtures/scene-controls.js';
+const url=URL.createObjectURL(new Blob([neutralWav()],{type:'audio/wav'})),log=document.querySelector('#log'),result=document.querySelector('#result');let lines=[];
+const say=s=>{lines.push(s);log.textContent=lines.slice(-25).join('\n');};window.addEventListener('error',e=>say('ERROR '+e.message));window.addEventListener('unhandledrejection',e=>say('REJECTION '+e.reason));
+const session=createSceneAudio();let valid=true;let managed;
+for(const label of ['Plain','Shadow','Managed']){
+ const section=document.createElement('section');document.querySelector('#cases').append(section);section.setAttribute('aria-label',label);const root=label==='Plain'?section:section.attachShadow({mode:'open'});
+ root.innerHTML=`<style>:host{font:16px system-ui}button{padding:10px;margin:5px}audio{max-width:100%}</style><h2>${label}</h2><p>Dialogue sample</p><button>Collapse ${label}</button><div></div><button>Hide ${label} player</button>`;
+ const words=root.querySelector('p'),buttons=root.querySelectorAll('button'),slot=root.querySelector('div');buttons[0].onclick=()=>{words.hidden=!words.hidden;say(label+' collapse '+words.hidden);};buttons[1].onclick=()=>{slot.hidden=!slot.hidden;say(label+' hidden '+slot.hidden);};
+ const a=label==='Managed'?session.bind({key:'test',url,valid:()=>valid,volume:0,loop:false}):new Audio(url);a.controls=true;a.preload='none';a.muted=true;slot.append(a);if(label==='Managed')managed={a,slot,words};
+ for(const event of ['play','playing','pause','error','ended'])a.addEventListener(event,()=>say(label+' '+event));
+ root.addEventListener('click',e=>say(label+' click '+e.target.tagName+' trusted='+e.isTrusted));
+}
+document.querySelector('#stress').onclick=async()=>{try{const original=managed.a;for(let i=0;i<50;i++){
+ valid=true;const a=session.bind({key:'cycle-'+i,url,valid:()=>valid,volume:0,loop:false});managed.slot.append(a);a.muted=true;await a.play();managed.words.hidden=true;managed.slot.hidden=true;if(a.paused)throw Error('Hidden player stopped');managed.slot.hidden=false;managed.words.hidden=false;session.bind({key:'cycle-'+i,url,valid:()=>valid,volume:0,loop:false});if(a!==original)throw Error('Player allocated again');valid=false;session.sweep();if(a.getAttribute('src')||!a.paused)throw Error('Retired player active');await new Promise(r=>setTimeout(r,20));}
+ result.textContent='PASS: 50 play/hide/show/rebind/invalidate cycles, one player, no active source';}catch(e){result.textContent='FAIL: '+e.message;}finally{session.stop();}};
+</script></html>

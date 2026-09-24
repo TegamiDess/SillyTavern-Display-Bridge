@@ -1,3 +1,8 @@
+import {runSceneStoryTests} from './scene-story-tests.js';
+import {runSceneControlsTests} from './scene-controls-tests.js';
+import {runPerformanceTests} from './performance-tests.js';
+import {runSnapshotTests} from './snapshot-tests.js';
+import {runPortableTests} from './portable-tests.js';
 import {runSceneTests} from './scene-tests.js';
 import {runBilingualTests} from './bilingual-tests.js';
 import {runOutfitTests} from './outfit-tests.js';
@@ -239,9 +244,14 @@ await runRecognitionTests({test,assert,setup,wait,ctx,characters,extension_setti
 await runPresentationTests({test,assert,setup,native,wait,ctx,characters,bridge:()=>bridge});
 await runMappingTests({test,assert,setup,wait,ctx,extension_settings,bridge:()=>bridge});
 await runSceneTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
+await runSceneControlsTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
+await runSceneStoryTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
 await runOutfitTests({test,assert,setup,wait,ctx,bridge:()=>bridge});
 await runBilingualTests({test,assert,setup});
 await runAuditTests({test,assert,setup,wait,characters});
+await runPerformanceTests({test,assert,setup,wait,bridge:()=>bridge});
+await runSnapshotTests({test,assert,setup,bridge:()=>bridge});
+await runPortableTests({test,assert,setup,native,wait,ctx,characters,extension_settings,bridge:()=>bridge});
 window.testResults=results;
 const passed=results.filter(x=>x.passed).length;
 document.getElementById('status').textContent=`${passed}/${results.length} tests passed. ${passed===results.length?'All checks passed.':'Failures require attention.'}`;

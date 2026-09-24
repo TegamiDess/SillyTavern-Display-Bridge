@@ -1,6 +1,6 @@
 # Display Bridge and V3 Asset Sprites
 
-Experimental, PC-first SillyTavern extensions for importing CHARX images and recognized Risu-style UI. **Display Bridge 0.21.1 / V3 Asset Sprites 0.9.1**.
+Experimental, PC-first SillyTavern extensions for importing CHARX images and recognized Risu-style UI. **Display Bridge 0.21.2 / V3 Asset Sprites 0.9.1**.
 
 Supported families include common portrait/dialogue layouts, reviewed composed scenes, Community-style profile panels, and streamer/Witchcure panels. Matching is based on supported source structure or an explicit profile, not author identity. General Lua/STscript and arbitrary conditional greetings remain unsupported. Reviewed declarative state and startup profiles are supported; automatic source conversion is limited to recognized structures.
 
@@ -16,6 +16,8 @@ Supported families include common portrait/dialogue layouts, reviewed composed s
 This repository holds two extension roots. Pointing ST's Git install button at the combined repository root is not supported; use the folder installation above. Each extension directory contains its own manifest.
 
 ## Quick trial
+
+**0.21.2:** signed affection captions no longer become malformed state updates, music commands with an extra leading `@` are accepted for recognized tracks, and newly assembled scene profiles default to 10% music volume. Existing profiles and saved chat volumes are preserved. [Patch details](SCENE-RELEASE-0.21.2.md).
 
 **0.21.1:** failed swipes restore accepted scene state automatically. Untracked location updates are skipped with a console-only warning. Music, character information and a rebuild shortcut now share a collapsible side panel. Try `examples/scene-context-import.charx` for source-only scene, roster, state, music and request-context conversion. Initialize Conversation state before generating. [Automatic import setup and limits](display-bridge/SCENE-AUTO-IMPORT.md). The original To Love Ru source still requires review for missing assets and unsupported interactions. [Release details](SCENE-RELEASE-0.21.1.md); [explicit state/startup](display-bridge/SCENE-STATE.md).
 

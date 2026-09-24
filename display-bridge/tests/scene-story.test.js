@@ -73,7 +73,7 @@ test('Streamed swipe accepts tooltip score captions without treating them as del
  const config={format,sceneState:state},ctx={chat:[msg('Start'),msg('<❤alex+3>')],chatId:'chat',chatMetadata:{},saveChat:async()=>{},onlineStatus:'connected'};
  const host=createStoryState({getContext:()=>ctx,scope:()=>({identity:'character',config})});await host.rebuild();const m=ctx.chat[1];m.swipe_id=1;
  host.begin('swipe',{},false);ctx.streamingProcessor={isStopped:false,isFinished:true,abortController:new AbortController()};
- m.mes='<ct="@alex"_"Happy"_"❤alex:5"_"Ready"><❤alex+2>';m.swipes.push(m.mes);
+ m.mes='<ct="@alex"_"Happy"_"❤alex:-5"_"Ready"><❤alex+2>';m.swipes.push(m.mes);
  await host.received(1,'swipe');host.end();assert.equal(host.read().issue,null);assert.equal(host.read().values.score,12);
  m.swipe_id=0;m.mes=m.swipes[0];host.invalidate();assert.equal(host.read().values.score,13);
  for(const invalid of ['"❤alex:5"','<ct="@alex"_"Happy"_"❤alex+oops"_"Ready">']){

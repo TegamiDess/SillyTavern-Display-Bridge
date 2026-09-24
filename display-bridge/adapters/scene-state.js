@@ -58,7 +58,16 @@ export function deriveStory(values,s){const next={...values};for(const d of s.de
 export function applyStory(values,updates,s){const next={...values};for(const u of updates){const v=s.variables[u.key];if(!v)fail('undeclared update');if(u.op==='set')next[u.key]=stateValue(u.value,v);else{if(v.type!=='number'||!Number.isFinite(next[u.key])||!Number.isFinite(u.value))fail('delta has unknown numeric base');next[u.key]=stateValue(next[u.key]+(u.op==='subtract'?-u.value:u.value),v);}}return deriveStory(next,s);}
 export function parseStoryUpdates(source,s,displayRanges=[],onIgnored=()=>{}){
  if(typeof source!=='string'||source.length>200000)fail('message exceeds state scan limit');
- const ranges=[...codeRanges(source),...displayRanges],updates=[],ignored=[],prefixes=new Map((s.strictPrefixes??[]).map(p=>[p,false]));
+ const ranges=[...codeRanges(source),...displayRanges],updates=[],ignored=[];
+ // Older assembled profiles only contain the canonical BGM literal. Keep
+ // accepting the observed model typo (`<@BGM=@BGM_...>`) without requiring
+ // users to rebuild those profiles, while retaining the same state value.
+ const literals=[...(s.literals??[])],literalTexts=new Set(literals.map(l=>l.text));
+ for(const l of s.literals??[])if(l.text.startsWith('<BGM=@BGM_')){
+  const alias='<@'+l.text.slice(1);if(!literalTexts.has(alias)){literals.push({...l,text:alias});literalTexts.add(alias);}
+ }
+ const prefixes=new Map((s.strictPrefixes??[]).map(p=>[p,false]));
+ if(literals.some(l=>l.text.startsWith('<@BGM=@BGM_'))&&!prefixes.has('<@BGM=@BGM_'))prefixes.set('<@BGM=@BGM_',false);
  const locations=new Set((s.roster??[]).map(r=>r.location).filter(Boolean));
  for(const rule of s.rules){
   const parts=rule.template.split(/(\{entity\}|\{value\})/),order=parts.filter(p=>p==='{entity}'||p==='{value}');prefixes.set(parts[0],prefixes.get(parts[0])||rule.insensitive===true);
@@ -88,7 +97,7 @@ export function parseStoryUpdates(source,s,displayRanges=[],onIgnored=()=>{}){
    updates.push({start,end,key:name,value,op:rule.op});if(updates.length+ignored.length>256)fail('too many state updates');
   }
  }
- for(const l of [...(s.literals??[])].sort((a,b)=>b.text.length-a.text.length)){let at=-1;while((at=source.indexOf(l.text,at+1))>=0){const end=at+l.text.length;if(source[at-1]==='\\'||ranges.some(([a,b])=>at<b&&end>a)||[...updates,...ignored].some(u=>at<u.end&&end>u.start))continue;updates.push({start:at,end,key:l.key,value:l.value,op:'set'});if(updates.length+ignored.length>256)fail('too many state updates');}}
+ for(const l of literals.sort((a,b)=>b.text.length-a.text.length)){let at=-1;while((at=source.indexOf(l.text,at+1))>=0){const end=at+l.text.length;if(source[at-1]==='\\'||ranges.some(([a,b])=>at<b&&end>a)||[...updates,...ignored].some(u=>at<u.end&&end>u.start))continue;updates.push({start:at,end,key:l.key,value:l.value,op:'set'});if(updates.length+ignored.length>256)fail('too many state updates');}}
  const annotations=[...updates,...ignored].sort((a,b)=>a.start-b.start);for(let i=1;i<annotations.length;i++)if(annotations[i].start<annotations[i-1].end)fail('overlapping state annotations');
  updates.sort((a,b)=>a.start-b.start);
  for(const [prefix,insensitive] of prefixes){let at=-1;const scanned=insensitive?source.toLowerCase():source,needle=insensitive?prefix.toLowerCase():prefix;while((at=scanned.indexOf(needle,at+1))>=0){if(source[at-1]==='\\'||ranges.some(([a,b])=>at>=a&&at<b)||updates.some(u=>at>=u.start&&at<u.end)||ignored.some(u=>at>=u.start&&at<u.end))continue;fail('incomplete or unsupported state annotation beginning '+JSON.stringify(prefix));}}

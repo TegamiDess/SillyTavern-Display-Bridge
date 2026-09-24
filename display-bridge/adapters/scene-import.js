@@ -75,16 +75,22 @@ export function assembleSceneImport(source,preset){
   const audio=/\{\{#if \{\{equal::\{\{getvar::bgm\}\}::(\d+)\}\}\}\}\s*\{\{audio::([^{}]+)\}\}\s*\{\{\/if\}\}/g;
   for(const m of String(risu.backgroundHTML??'').matchAll(audio)){if(!plain(m[2])||codes.has(m[1]))throw Error('Ambiguous music branches.');const track={id:'track'+m[1],label:m[2],asset:m[2]};tracks.push(track);codes.set(m[1],track.id);}
   if(tracks.length){
-   controls.music={title:'Scene music',tracks,volume:.3,loop:true};state.variables.sceneTrack={type:'enum',initial:codes.get(initial.bgm)??null,values:tracks.map(t=>t.id)};state.track='sceneTrack';state.literals=[];
+   controls.music={title:'Scene music',tracks,volume:.1,loop:true};state.variables.sceneTrack={type:'enum',initial:codes.get(initial.bgm)??null,values:tracks.map(t=>t.id)};state.track='sceneTrack';state.literals=[];
    rules.forEach((r,index)=>{if(r.type!=='editoutput'||!['','g'].includes(flags(r)))return;
     if(r.in==='@BGMoff|<@BGMoff>|<@BGM=BGMoff>'&&r.out==='{{setvar::bgm::0}}'){for(const text of r.in.split('|'))state.literals.push({text,key:'sceneTrack',value:null});adaptedRules.set(index,'Compiled explicit music-stop annotations.');return;}
     const match=/^<BGM=@BGM_(0?)\(\\d\+\)_\(([^()]+)\)>$/.exec(r.in);
     if(!match||r.out!=='{{setvar::bgm::$1}}')return;
     const labels=match[2].split('|');if(!labels.every(x=>plain(x,60)&&/^[\p{L}\p{N}_ '’-]+$/u.test(x)))return;
-    for(const label of labels)for(const code of codes.keys())state.literals.push({text:'<BGM=@BGM_'+(match[1]?'0':'')+code+'_'+label+'>',key:'sceneTrack',value:codes.get(code)});
-    adaptedRules.set(index,'Compiled finite music labels and code-to-track assignments.');
+    for(const label of labels)for(const code of codes.keys()){
+     const tag='<BGM=@BGM_'+(match[1]?'0':'')+code+'_'+label+'>';
+     state.literals.push({text:tag,key:'sceneTrack',value:codes.get(code)});
+     // Some models emit an extra @ before BGM=. Treat that observed typo as
+     // the same finite annotation so it cannot leak into the rendered scene.
+     state.literals.push({text:'<@BGM=@BGM_'+(match[1]?'0':'')+code+'_'+label+'>',key:'sceneTrack',value:codes.get(code)});
+    }
+    adaptedRules.set(index,'Compiled finite music labels and code-to-track assignments; accepted the observed leading-@ BGM typo as a display-only alias.');
    });
-   state.strictPrefixes=['<BGM=@BGM_'];
+   state.strictPrefixes=['<BGM=@BGM_','<@BGM=@BGM_'];
    add('Music',state.literals.some(l=>l.value!==null)?'ready':'partial',`${tracks.length} local track bindings. Initial Play is required; automatic selection follows recognized BGM annotations, not guessed background names.`);
    if(initial.bgm!==undefined&&initial.bgm!=='0'&&!codes.has(initial.bgm))add('Initial music','missing','The declared initial music code has no matching track.');
   }

@@ -7,6 +7,6 @@
   "generate_interceptor": "displayBridgeSceneRequest",
   "css": "style.css",
   "author": "Display Bridge contributors",
-  "version": "0.21.1",
+  "version": "0.21.2",
   "license": "AGPL-3.0-only"
 }

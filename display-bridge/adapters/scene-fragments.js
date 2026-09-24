@@ -36,7 +36,7 @@ const field = '"([^"<>\\r\\n]{1,256})"';
 // Do not exclude the whole tuple: quoted + / - updates there remain meaningful.
 export function sceneScoreCaptionRanges(source) {
     const ranges=[];
-    for(const m of source.matchAll(/<ct="[^"<>\r\n]{1,256}"_"[^"<>\r\n]{1,256}"_("❤[^"<>:\r\n]{1,60}:\d{1,6}")_"[^"<>\r\n]{1,256}">/g)) {
+    for(const m of source.matchAll(/<ct="[^"<>\r\n]{1,256}"_"[^"<>\r\n]{1,256}"_("❤[^"<>:\r\n]{1,60}:[+-]?\d{1,6}")_"[^"<>\r\n]{1,256}">/g)) {
         const start=m.index+m[0].indexOf(m[1]);ranges.push([start,start+m[1].length]);
     }
     return ranges;

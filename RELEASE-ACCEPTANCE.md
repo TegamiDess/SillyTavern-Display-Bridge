@@ -1,4 +1,14 @@
-# Release acceptance — 0.21.1 / 0.9.1
+# Release acceptance
+
+## 0.21.2 patch / provider 0.9.1
+
+The patch changes signed scene score captions, recognized leading-`@` music aliases, and the default volume for newly assembled profiles. See [patch details](SCENE-RELEASE-0.21.2.md). The repository contents scan covers tracked files and bundled CHARX entries for known personal paths, credential patterns, and temporary artifacts. Private profiles, lorebooks, chat logs and repair scripts are not part of this release. This scan is not a guarantee that every possible secret pattern is detectable.
+
+Fresh checks: all 181 unit tests passed with zero failures using the locked test dependency; release manifest/package versions agree; the contents scan found no matches among 217 release files and the entries inside eight bundled CHARX fixtures. Temporary outputs, Python caches, backup files and performance dumps are now explicitly ignored.
+
+Fresh browser/native acceptance was not repeated for this patch. The detailed results below belong to the 0.21.1 baseline.
+
+## 0.21.1 baseline / provider 0.9.1
 
 Target: Display Bridge 0.21.1 and V3 Asset Sprites 0.9.1 together, on SillyTavern 1.15.0, desktop browser. This closes stage 8 for the documented experimental feature set, not for arbitrary Risu cards or complete To Love Ru equivalence.
 

@@ -8,6 +8,13 @@ node_modules/
 data/
 backups/
 work/
+outputs/
+__pycache__/
+*.pyc
+*.bak
+*.tmp
+*.cpuprofile
+*.heapsnapshot
 SillyTavern-test/
 .codex/
 .agents/

@@ -1,3 +1,4 @@
+import {bindSceneMotion,SCENE_MOTION_CSS} from './scene-motion.js';
 import { createSceneControls, SCENE_CONTROLS_CSS } from './scene-controls.js';
 import { mappedPortraitReference, appearanceChoices } from '../adapters/portrait-mappings.js';
 import { bindPortraitHover } from './portrait-hover.js';
@@ -21,7 +22,7 @@ article{font:16px/1.55 system-ui,sans-serif;color:inherit;max-width:920px;margin
 .narration .speech{background:color-mix(in srgb,var(--paper) 84%,var(--ink) 16%);border-color:color-mix(in srgb,var(--accent) 60%,var(--ink) 40%);box-shadow:0 3px 10px #0002}
 /* The scene is sized independently of its scrollable dialogue overlay. */
 .stage.scene{min-height:420px;height:clamp(420px,65vh,600px);padding-top:0}
-.scene .speech{padding:12px 18px;background:color-mix(in srgb,var(--paper) 78%,transparent);background-image:none;backdrop-filter:blur(3px)}
+.scene .speech{padding:12px 18px;background:color-mix(in srgb,var(--paper) var(--db-dialogue-alpha,78%),transparent);background-image:none;backdrop-filter:blur(3px)}
 .scene .words{max-height:120px}
 .scene .text-controls{position:absolute;z-index:5;right:3%;bottom:4px;margin:0}.scene .speech{margin-bottom:52px}
 .scene.expanded .words{max-height:min(60vh,560px)}
@@ -45,8 +46,8 @@ article{font:16px/1.55 system-ui,sans-serif;color:inherit;max-width:920px;margin
 /* Reviewed source clip-space: a 60% portrait band and a 40px settling offset.
    The actual bitmap remains fitted, so alpha hit testing has no letterbox. */
 .cast-slot.positioned img{bottom:auto;top:calc(var(--cast-origin) + var(--cast-top) + 40px);transform:translate(-50%,-50%);max-height:54%;max-width:90%}
-.portrait-tooltip{position:absolute;left:5%;right:5%;bottom:35%;z-index:7;background:#172333eb;color:#fff;border:1px solid #8394aa;border-radius:6px;padding:8px;white-space:pre-wrap;font:13px/1.4 system-ui;overflow-wrap:anywhere;pointer-events:none;visibility:hidden}.cast-slot.portrait-hover .portrait-tooltip,.cast-slot:focus-visible .portrait-tooltip{visibility:visible}
-.words .scene-narration{color:color-mix(in srgb,currentColor 78%,var(--accent));font-style:italic}
+.portrait-tooltip{position:absolute;left:5%;right:5%;bottom:35%;z-index:7;background:color-mix(in srgb,#172333 var(--db-status-alpha,92%),transparent);color:#fff;border:1px solid #8394aa;border-radius:6px;padding:8px;white-space:pre-wrap;font:13px/1.4 system-ui;overflow-wrap:anywhere;pointer-events:none;visibility:hidden}.cast-slot.portrait-hover .portrait-tooltip,.cast-slot:focus-visible .portrait-tooltip{visibility:visible}
+.speaker-line{color:color-mix(in srgb,var(--speaker-color) var(--db-speaker-strength,100%),currentColor);text-shadow:var(--db-speaker-shadow,var(--speaker-shadow))}.words .scene-narration{color:color-mix(in srgb,currentColor 78%,var(--accent));font-style:italic}
 /* fullBgImage2/3 are the environment behind an opaque inset scene. Keep
    them outside the stage's clipping/portrait coordinate space. */
 article.environment-scene{max-width:none;width:100%}
@@ -55,31 +56,120 @@ article.environment-scene{max-width:none;width:100%}
 .environment>.scene-layer.effect{z-index:1}
 .environment::after{content:'';position:absolute;inset:0;z-index:2;background:linear-gradient(transparent 35%,#31333fcc);pointer-events:none}
 .environment>.stage.scene{z-index:3;width:100%;height:auto;min-height:280px;aspect-ratio:16/9;padding:0;border:clamp(8px,1.4vw,24px) solid #afe3fa;border-bottom-color:#fff;border-radius:12px}
+.environment>.stage.period-dusk{border-color:#e39740;border-bottom-color:#ffe38f}
+.environment>.stage.period-night,.environment>.stage.period-midnight{border-color:#315ebd;border-bottom-color:#3a4c70}
 .environment .scene-backdrop{opacity:1}
 .environment .scene-label{top:auto;bottom:6px;background:transparent;font-size:24px;font-weight:750;text-shadow:0 2px 4px #000}
 .scene-clock{position:absolute;top:8px;left:10px;z-index:5;background:#171b20b3;color:#e5f6ff;border-radius:7px;padding:6px 10px;max-width:85%;overflow-wrap:anywhere}
-.environment .speech{width:76%;margin:0 auto 40px;border:1px solid #ffffff26;border-radius:10px;background:#20252dcc;color:#d8e9f5;backdrop-filter:none;box-shadow:none}
+.environment .speech{width:76%;margin:0 auto 40px;border:1px solid #ffffff26;border-radius:10px;background:color-mix(in srgb,#20252d var(--db-dialogue-alpha,80%),transparent);color:#d8e9f5;backdrop-filter:none;box-shadow:none}
 .environment .words{max-height:clamp(100px,12vw,170px)}
 .environment .scene.expanded .speech{width:90%;max-height:calc(100% - 60px)}
 .environment .scene.expanded .words{max-height:clamp(160px,36vw,65vh)}
 .environment .text-controls{right:12%;bottom:4px}
 .environment .text-controls button{padding:5px 9px;font-weight:400}
 .environment .cast{padding-inline:4%;gap:0}
+/* Let status captions clear the dialogue without raising portraits above it. */
+.environment .scene .cast{z-index:auto}
+.environment .cast-slot img{z-index:3}
 .environment .cast.cast-2{padding-inline:14%}
 .environment .cast.cast-1{padding-inline:25%}
 .environment .cast-slot.positioned.relative-position img{top:var(--cast-top);height:90%;max-height:90%;max-width:90%}
 
+.scene .cast.cast-single-image{padding:0;gap:0}
+.scene .cast-slot.single-image img{left:50%;top:var(--single-top);bottom:auto;width:var(--single-width);height:var(--single-height);max-width:none;max-height:none;transform:translate(-50%,-50%);object-fit:contain;object-position:center}
+
+/* A reviewed frame has its own geometry. Dialogue expansion never resizes it. */
+article.reviewed-scene{width:100%;max-width:var(--scene-max-width);container-type:inline-size}
+.stage.scene.layout-frame{display:grid;grid-template-columns:minmax(0,1fr);height:auto;min-height:0;padding:0;overflow:visible}
+.scene-viewport{position:relative;isolation:isolate;overflow:hidden;grid-area:1/1;width:100%;aspect-ratio:var(--scene-ratio)}
+.layout-frame .scene-backdrop{opacity:1}
+.layout-frame .scene-label{top:auto;bottom:8px}
+.layout-frame .speech{grid-area:1/1;align-self:end;min-width:0;max-height:45%;margin:0 3% 12px;overflow:auto}
+.layout-frame .words{max-height:120px}
+/* Keep the hover caption above its fitted portrait while dialogue overlays it.
+   Expanded and narrow layouts retain the usual caption position. */
+.layout-frame:not(.expanded):not(.collapsed):not(.no-dialogue) .portrait-tooltip{top:var(--portrait-tip-top,0px);bottom:auto}
+.layout-frame .text-controls{position:relative;grid-area:2/1;right:auto;bottom:auto;flex-wrap:wrap;margin:8px 0}
+.layout-frame.expanded .speech{grid-area:2/1;max-height:none;margin:8px 0 0}
+.layout-frame.expanded .words{max-height:min(60vh,560px)}
+.layout-frame.expanded .text-controls{grid-area:3/1}
+.layout-frame.no-image .scene-viewport{display:none}
+.layout-frame.no-image .speech{grid-area:2/1;max-height:none;margin:0}
+.layout-frame.no-image .text-controls{grid-area:3/1}
+.scene-header{position:absolute;inset:0 0 auto;z-index:5;display:flex;flex-wrap:wrap;gap:4px 16px;margin:0;padding:7px 10px;background:#171b20d9;color:#fff;font:13px/1.4 system-ui;overflow-wrap:anywhere;pointer-events:none}
+.scene-header>div{display:flex;align-items:baseline;gap:5px;min-width:0;max-width:100%}
+.scene-header dd{margin:0;min-width:0;font-weight:600}
+.scene-header dt{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@container (max-width:480px){
+  .layout-frame .speech{grid-area:2/1;max-height:none;margin:8px 0 0;padding:10px 12px}
+  .layout-frame .text-controls{grid-area:3/1}
+  .layout-frame:not(.expanded):not(.collapsed):not(.no-dialogue) .portrait-tooltip{top:auto;bottom:35%}
+  .scene-header{font-size:12px;gap:3px 10px;padding:5px 8px}
+}
+
+/* Layered scenes use their own coordinate space. Dialogue and controls cannot
+   stretch the artwork; on narrow panels they flow underneath it. All geometry
+   is relative to the message, never the application's viewport or menus. */
+article.environment-scene{container-type:inline-size}
+.environment{padding:12% 4% 3%;background:transparent}
+.environment::after{background:linear-gradient(transparent 35%,#31333fcc 82%,#31333f);}
+.environment>.stage.scene{display:grid;grid-template-columns:minmax(0,1fr);height:auto;min-height:0;aspect-ratio:auto;border:0;border-radius:0;overflow:visible;--frame-top:#ade1ff;--frame-bottom:#fff}
+.environment>.stage.period-dusk{--frame-top:#e39740;--frame-bottom:#ffe38f}
+.environment>.stage.period-night,.environment>.stage.period-midnight{--frame-top:#315ebd;--frame-bottom:#3a4c70}
+.environment .environment-viewport{isolation:auto;aspect-ratio:40/21;border:clamp(6px,1.8333cqw,22px) solid var(--frame-top);border-image:linear-gradient(to bottom,var(--frame-top),var(--frame-bottom)) 1;border-radius:10px}
+.environment .speech{grid-area:1/1;align-self:end;min-width:0;width:76%;max-height:calc(100% - 60px);margin:0 auto 12px;padding:clamp(10px,1.6667cqw,20px);line-height:1.6}
+.environment .words{max-height:clamp(90px,13.3333cqw,160px);scrollbar-width:thin}
+.environment .scene .text-controls{position:relative;grid-area:2/1;right:auto;bottom:auto;flex-wrap:wrap;gap:8px;margin:8px 0 0;z-index:5}
+.environment .text-controls button{min-height:32px}
+.environment .scene.expanded .speech{grid-area:2/1;width:94%;max-height:none;margin:8px auto 0}
+.environment .scene.expanded .words{max-height:min(60vh,600px)}
+.environment .scene.expanded .text-controls{grid-area:3/1}
+.environment .scene-clock{font:clamp(12px,1.4167cqw,17px)/1.4 ui-monospace,monospace;border:1px solid #c8c8c84d;box-shadow:0 0 10px #ffffff33;text-shadow:0 0 5px #4fc3f7b3;padding:5px 8px;max-width:calc(100% - 20px)}
+.environment .scene-label{font-size:clamp(16px,2.6667cqw,32px);left:3%;bottom:3%}
+.environment .cast:not(.cast-single-image){padding:0;gap:0}
+.environment .cast:not(.cast-single-image) .cast-slot{position:absolute;top:-8.3333%;height:100%;width:30%;left:35%;flex:none}
+.environment .cast-1:not(.cast-single-image) .cast-slot{left:20%;width:60%}
+.environment .cast-2 .cast-slot:nth-child(1){left:18%}
+.environment .cast-2 .cast-slot:nth-child(2){left:52%}
+.environment .cast-3 .cast-slot:nth-child(1){left:10%}
+.environment .cast-3 .cast-slot:nth-child(3){left:60%}
+.environment .cast-4 .cast-slot:nth-child(1){left:5%}
+.environment .cast-4 .cast-slot:nth-child(2){left:25%}
+.environment .cast-4 .cast-slot:nth-child(3){left:45%}
+.environment .cast-4 .cast-slot:nth-child(4){left:65%}
+.environment .cast-slot.positioned img{top:var(--cast-top);bottom:auto;width:90%;height:90%;max-width:none;max-height:none;object-position:center;transform:translate(-50%,-50%)}
+.environment.images-hidden{padding:0;background:none}
+.environment.images-hidden::after{display:none}
+.environment .no-image .environment-viewport{display:none}
+.environment .no-image .speech{grid-area:1/1;width:100%;max-height:none;margin:0}
+.environment .no-image .text-controls{grid-area:2/1}
+@container (max-width:480px){
+ .environment .speech,.environment .scene.expanded .speech{grid-area:2/1;width:100%;max-height:none;margin:8px 0 0;padding:12px}
+ .environment .scene .text-controls{grid-area:3/1}
+ .environment .scene.collapsed .text-controls,.environment .scene.no-dialogue .text-controls{grid-area:2/1}
+ .environment .no-image .speech{grid-area:1/1;margin:0}
+ .environment .no-image .text-controls{grid-area:2/1}
+}
+
 `;
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
-function appendRuns(target,runs){for(const run of runs){let content=document.createTextNode(run.text);for(const mark of run.marks){if(!['strong','em','u','s'].includes(mark))continue;const node=el(mark);node.append(content);content=node;}const span=el('span');if(run.kind==='narration')span.className='scene-narration';span.append(content);target.append(span);}}
+function appendRuns(target,runs,palette){for(const run of runs){let content=document.createTextNode(run.text);for(const mark of run.marks){if(!['strong','em','u','s'].includes(mark))continue;const node=el(mark);node.append(content);content=node;}const span=el('span');if(run.kind==='narration')span.className='scene-narration';if(run.speaker&&Object.hasOwn(palette?.speakers??{},run.speaker)){const entry=palette.speakers[run.speaker];span.classList.add('speaker-line');span.dataset.speaker=run.speaker;span.title=entry.label;span.style.setProperty('--speaker-color',entry.color);const rgb=entry.color.slice(1).match(/../g).map(x=>parseInt(x,16));const dark=(rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722)<90;span.style.setProperty('--speaker-shadow',dark?'0 0 2px #fff, 0 0 3px #fff':'0 1px 2px #000');}span.append(content);target.append(span);}}
 export function createPortraitDialogue(data,{avatar,resolver=resolveImage,presetState,stateFor,mediaFor}={}){
     if(data.suppressed){const host=el('span');host.className='display-bridge-widget';host.hidden=true;return {host,refresh(){},missingImages:()=>0,imageIssues:()=>[]};}
     if(data.presentation==='profile')return createProfileCard(data,{avatar,resolver});
-    const host=el('span');host.className='display-bridge-widget';const shadow=host.attachShadow({mode:'open'});shadow.append(el('style',CSS+SCENE_CONTROLS_CSS));
+    const host=el('span');host.className='display-bridge-widget';const shadow=host.attachShadow({mode:'open'});shadow.append(el('style',CSS+SCENE_CONTROLS_CSS+SCENE_MOTION_CSS));
     const article=el('article');article.setAttribute('aria-label','Portrait and dialogue');shadow.append(article);
     const c=data.config,t=c.theme;for(const [k,v] of Object.entries({accent:t.accent,paper:t.background,ink:t.text,position:t.position}))article.style.setProperty('--'+k,v);
+    if(data.historyTextOnly){
+        host.dataset.sceneHistory='text';article.setAttribute('aria-label','Earlier scene dialogue');
+        const text=el('div',data.dialogueRuns?undefined:data.dialogue);text.className='plain';
+        if(data.dialogueRuns)appendRuns(text,data.dialogueRuns,c.speakerColors);article.append(text);
+        return {host,refresh(){},missingImages:()=>0,imageIssues:()=>[]};
+    }
     article.classList.toggle('gingham',(data.style?.pattern??t.pattern)==='gingham');
     const stage=el('div');stage.className='stage';
+    const layout=data.presentation==='scene'?c.sceneLayout:null;
+    if(layout){article.classList.add('reviewed-scene');article.style.setProperty('--scene-max-width',layout.maxWidth+'px');article.style.setProperty('--scene-ratio',layout.aspectRatio.join(' / '));stage.classList.add('layout-frame');}
     const framed=data.presentation==='scene'&&c.format?.details?.layers===true;
     const environment=framed?el('div'):null;
     if(environment){environment.className='environment';article.classList.add('environment-scene');}
@@ -94,7 +184,7 @@ export function createPortraitDialogue(data,{avatar,resolver=resolveImage,preset
     }
     const image=el('img');image.className='portrait';image.alt=data.speaker;
     const missing=el('p');missing.className='missing';const speech=el('section');speech.className='speech';speech.setAttribute('aria-label','Dialogue');
-    const name=el('span',data.speaker);name.className='name';name.hidden=!data.speaker;const words=el(data.dialogueRuns?'div':'p',data.dialogueRuns?undefined:data.dialogue);if(data.dialogueRuns)appendRuns(words,data.dialogueRuns);words.className='words';words.tabIndex=0;speech.append(name,words);stage.append(image,missing,speech);
+    const name=el('span',data.speaker);name.className='name';name.hidden=!data.speaker;const words=el(data.dialogueRuns?'div':'p',data.dialogueRuns?undefined:data.dialogue);if(data.dialogueRuns)appendRuns(words,data.dialogueRuns,c.speakerColors);words.className='words';words.tabIndex=0;speech.append(name,words);stage.append(image,missing,speech);
     if(data.translatedDialogue){
         const translated=el('span',data.translatedDialogue),original=el('span',data.originalDialogue),hint=el('small','Translation · hover or focus for original');hint.className='language-hint';words.classList.add('bilingual');words.replaceChildren(translated,original);speech.append(hint);
         let hovering=false,focused=false;
@@ -105,33 +195,56 @@ export function createPortraitDialogue(data,{avatar,resolver=resolveImage,preset
     const assets=[{image,reference:data.portrait,status:'missing',url:null}];
     if(data.presentation==='scene'){
         stage.classList.add('scene');image.remove();assets.length=0;
+        const frame=layout||framed?el('div'):stage;
+        if(layout||framed){frame.className='scene-viewport'+(framed?' environment-viewport':'');stage.prepend(frame);frame.append(missing);}
         if(['daytime','dusk','night','midnight'].includes(data.period))stage.classList.add('period-'+data.period);
-        if(data.sceneLabel){const label=el('span',data.sceneLabel);label.className='scene-label';stage.append(label);}
-        for(const layer of data.layers??[]){const node=el('img');node.className='scene-layer '+layer.role;node.alt='';node.style.opacity=String(layer.opacity);(environment??stage).append(node);assets.push({image:node,reference:layer.asset,status:'missing',url:null});}
-        if(framed&&data.time){const clock=el('span',data.time);clock.className='scene-clock';clock.setAttribute('aria-label','Scene time');stage.append(clock);}
-        if(data.background){const background=el('img');background.className='scene-backdrop';background.alt='';stage.prepend(background);assets.push({image:background,reference:data.background,status:'missing',url:null});}
-        const cast=el('div');cast.className='cast cast-'+data.portraits.length;stage.insertBefore(cast,missing);
+        if(data.sceneLabel){const label=el('span',data.sceneLabel);label.className='scene-label';frame.append(label);}
+        if(layout?.metadataPosition==='top'){
+            const header=el('dl');header.className='scene-header';header.setAttribute('aria-label','Scene information');
+            const periods={daytime:['☀️','Daytime'],dusk:['🌇','Dusk'],night:['🌙','Night'],midnight:['🌙','Midnight']};
+            for(const field of ['date','day','time','location'])if(data[field]){
+                const row=el('div'),icon=el('span',field==='time'?(periods[data.period]?.[0]??'🕒'):field==='location'?'📍':'📅');icon.setAttribute('aria-hidden','true');
+                const value=el('dd',data[field]);if(field==='time'&&periods[data.period])value.setAttribute('aria-label',periods[data.period][1]+', '+data[field]);
+                row.append(el('dt',c.metadataLabels?.[field]??field),icon,value);header.append(row);
+            }
+            if(header.childElementCount)frame.append(header);
+        }
+        for(const layer of data.layers??[]){const node=el('img');node.className='scene-layer '+layer.role;node.alt='';node.style.opacity=String(layer.opacity);(environment??frame).append(node);assets.push({image:node,reference:layer.asset,status:'missing',url:null});}
+        if(framed&&data.time){const clock=el('span',data.time);clock.className='scene-clock';clock.setAttribute('aria-label','Scene time');frame.append(clock);}
+        if(data.background){const background=el('img');background.className='scene-backdrop';background.alt='';frame.prepend(background);assets.push({image:background,reference:data.background,status:'missing',url:null});}
+        const cast=el('div');cast.className='cast cast-'+data.portraits.length;cast.classList.toggle('cast-single-image',data.portraits.some(p=>p.singleImage));frame.insertBefore(cast,missing);
         for(const p of data.portraits){const slot=el('button');slot.type='button';slot.className='cast-slot';slot.setAttribute('aria-label',p.label??p.image);if(!p.tooltips?.length)slot.title=p.label??p.image;
-            if(p.offset){slot.classList.add('positioned');slot.classList.toggle('relative-position',p.offset.unit==='%');slot.style.setProperty('--cast-origin',p.geometry==='five'?'55.7%':'32%');slot.style.setProperty('--cast-top',String(p.offset.value*(p.offset.unit==='%'&&!framed?.6:1))+p.offset.unit);}
-            const base=el('img');base.alt=p.label??p.image;slot.append(base);const hoverTarget=bindPortraitHover(slot,base);assets.push({hoverTarget,image:base,reference:p.image,status:'missing',url:null});if(p.hover){const hover=el('img');hover.alt='';hover.className='hover-image';slot.append(hover);assets.push({image:hover,reference:p.hover,status:'missing',url:null,base});}
-            if(p.tooltips?.length){const tip=el('span',p.tooltips.join('\n'));tip.id='scene-tip-'+crypto.randomUUID();tip.className='portrait-tooltip';tip.setAttribute('role','tooltip');slot.setAttribute('aria-describedby',tip.id);slot.append(tip);}cast.append(slot);}
+            if(p.singleImage){slot.classList.add('single-image');slot.style.setProperty('--single-top',p.offset.value+p.offset.unit);slot.style.setProperty('--single-width',p.singleImage.width+'%');slot.style.setProperty('--single-height',p.singleImage.height+'%');}
+            else if(p.offset){slot.classList.add('positioned');slot.classList.toggle('relative-position',p.offset.unit==='%');slot.style.setProperty('--cast-origin',p.geometry==='five'?'55.7%':'32%');slot.style.setProperty('--cast-top',String(p.offset.value*(p.offset.unit==='%'&&!framed?.6:1))+p.offset.unit);}
+            const base=el('img');base.alt=p.label??p.image;slot.append(base);
+            let placeTooltip;
+            if(p.tooltips?.length){const tip=el('span',p.tooltips.join('\n'));tip.id='scene-tip-'+crypto.randomUUID();tip.className='portrait-tooltip';tip.setAttribute('role','tooltip');slot.setAttribute('aria-describedby',tip.id);slot.append(tip);
+                if(layout){
+                    // Measure only during preview, reusing the alpha hit test's image
+                    // bounds. No observers or idle scans for off-screen portraits.
+                    placeTooltip=bounds=>{const origin=slot.getBoundingClientRect().top,header=frame.querySelector('.scene-header');const top=Math.max((header?.getBoundingClientRect().bottom??origin)-origin+6,bounds.top-origin-tip.offsetHeight-8)+'px';if(slot.style.getPropertyValue('--portrait-tip-top')!==top)slot.style.setProperty('--portrait-tip-top',top);};
+                    slot.addEventListener('focus',()=>placeTooltip(base.getBoundingClientRect()));
+                }
+            }
+            const hoverTarget=bindPortraitHover(slot,base,{onPreview:placeTooltip});assets.push({hoverTarget,image:base,reference:p.image,status:'missing',url:null});if(p.hover){const hover=el('img');hover.alt='';hover.className='hover-image';slot.append(hover);assets.push({image:hover,reference:p.hover,status:'missing',url:null,base});}cast.append(slot);}
     }
     const isTextOnly=['narration','metadata'].includes(data.presentation);
     if(isTextOnly){assets.length=0;image.remove();missing.hidden=true;stage.classList.add('narration');speech.setAttribute('aria-label','Narration');}
     const textControls=el('div');textControls.className='text-controls';
     if(data.presentation==='scene')for(const [label,cls]of [['Expand dialogue','expanded'],['Collapse dialogue','collapsed']]){const control=el('button',label);control.type='button';control.setAttribute('aria-pressed','false');control.addEventListener('click',()=>{const on=stage.classList.toggle(cls);control.setAttribute('aria-pressed',String(on));if(cls==='collapsed'){control.textContent=on?'Show dialogue':label;stage.classList.remove('expanded');textControls.firstChild.setAttribute('aria-pressed','false');}else if(on){stage.classList.remove('collapsed');textControls.lastChild.textContent='Collapse dialogue';textControls.lastChild.setAttribute('aria-pressed','false');}});textControls.append(control);}
     if(data.presentation==='scene')stage.append(textControls);
-    const plain=el('p',data.dialogueRuns?undefined:`${data.speaker?data.speaker+': ':''}${data.dialogue}`);if(data.dialogueRuns)appendRuns(plain,data.dialogueRuns);plain.className='plain';
+    const plain=el('p',data.dialogueRuns?undefined:`${data.speaker?data.speaker+': ':''}${data.dialogue}`);if(data.dialogueRuns)appendRuns(plain,data.dialogueRuns,c.speakerColors);plain.className='plain';
     const toolbar=el('nav');toolbar.className='toolbar';toolbar.setAttribute('aria-label','Display controls');
     const console=el('section');console.className='console';console.setAttribute('aria-label','Scene settings');
     const options=el('div');options.className='options';const label=el('label',c.variantLabel);const select=el('select');select.setAttribute('aria-label',c.variantLabel);
     for(const v of appearanceChoices(c)){const option=el('option',v.label);option.value=v.id;select.append(option);}label.append(select);options.append(label);label.hidden=!c.variants.length;
-    const metadata=el('dl');metadata.className='metadata';for(const field of ['time','day','date','location'])if(data[field]&&!(framed&&field==='time')){const row=el('div');row.append(el('dt',c.metadataLabels?.[field]??field),el('dd',data[field]));metadata.append(row);}
+    const metadata=el('dl');metadata.className='metadata';for(const field of ['time','day','date','location'])if(data[field]&&!(framed&&field==='time')&&layout?.metadataPosition!=='top'){const row=el('div');row.append(el('dt',c.metadataLabels?.[field]??field),el('dd',data[field]));metadata.append(row);}
     const feedback=el('p','Display choices affect this chat only; story text is unchanged.');feedback.className='feedback';feedback.setAttribute('aria-live','polite');
     console.append(options,metadata,feedback);if(environment)environment.append(stage);article.append(environment??stage,plain,toolbar,console);
     const definition=portraitActions(c);
     const state=presetState??stateFor?.(definition,()=>host.isConnected)??createActionStore().bind(definition,'preview');
     const extras=createSceneControls(data,{avatar,resolver,state,media:mediaFor?.(data,host)});if(extras)article.append(extras.host);
+    const motion=bindSceneMotion(host,article,data.presentation==='scene'?c.sceneBehavior:null,{entrance:data.animateEntrance!==false});
     const controls=new Map();
     function dispatch(action){try{if(state.dispatch(action)){refresh();}}catch(e){feedback.textContent=e.message;}}
     function button(text,action,parent=toolbar){const b=el('button',text);b.type='button';b.addEventListener('click',()=>dispatch(action));parent.append(b);controls.set(action,b);return b;}
@@ -143,6 +256,7 @@ export function createPortraitDialogue(data,{avatar,resolver=resolveImage,preset
     function refresh(){
         extras?.refresh();
         const s=state.read();plain.hidden=s.visual||!s.dialogue;stage.hidden=!s.visual||(!s.image&&!s.dialogue);speech.hidden=!s.dialogue;console.hidden=!s.console;
+        motion.setActive?.(s.visual&&s.image);
         if(data.backgroundOnly){speech.hidden=true;textControls.hidden=true;plain.hidden=true;}
         stage.classList.toggle('no-image',!s.image);stage.classList.toggle('no-dialogue',!s.dialogue);select.value=s.variant;
         for(const [key,b] of controls)if(key!=='reset')b.setAttribute('aria-pressed',String(s[key]));
@@ -151,8 +265,8 @@ export function createPortraitDialogue(data,{avatar,resolver=resolveImage,preset
         const failed=assets.filter(a=>a.status!=='resolved');missing.hidden=!s.image||!failed.length;missing.textContent=failed.length?'Image unavailable: '+failed.map(a=>a.activeReference).join(', '):'';
         if(isTextOnly){stage.hidden=!s.visual||!s.dialogue||data.presentation==='metadata';missing.hidden=true;toolbar.hidden=data.presentation==='narration';console.hidden=data.presentation==='narration'||!s.console;plain.hidden=s.visual||!s.dialogue||data.presentation==='metadata';}
         if(data.controls===false){toolbar.hidden=true;options.hidden=true;feedback.hidden=true;console.hidden=!s.console||!metadata.childElementCount;}
-        if(environment)environment.hidden=stage.hidden;
+        if(environment){environment.hidden=stage.hidden;environment.classList.toggle('images-hidden',!s.image);}
 
     }
-    refresh();return {host,refresh,dispose:()=>extras?.dispose(),missingImages:()=>state.read().visual&&state.read().image?[...assets,...(extras?.images??[])].filter(a=>a.status!=='resolved').length:0,imageIssues:()=>[...assets,...(extras?.images??[])].filter(a=>a.status!=='resolved').map(a=>({reference:a.activeReference,status:a.status}))};
+    refresh();return {host,refresh,dispose:()=>{extras?.dispose();motion.dispose();},missingImages:()=>state.read().visual&&state.read().image?[...assets,...(extras?.images??[])].filter(a=>a.status!=='resolved').length:0,imageIssues:()=>[...assets,...(extras?.images??[])].filter(a=>a.status!=='resolved').map(a=>({reference:a.activeReference,status:a.status}))};
 }

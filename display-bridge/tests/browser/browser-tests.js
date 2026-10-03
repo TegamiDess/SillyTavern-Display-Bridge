@@ -1,3 +1,9 @@
+import {runSceneBehaviorTests} from './scene-behavior-tests.js';
+import {runSceneRequestCleanupTests} from './scene-request-cleanup-tests.js';
+import {runSingleImageTests} from './single-image-tests.js';
+import {runSceneFidelityTests} from './scene-fidelity-tests.js';
+import {runSceneScrollTests} from './scene-scroll-tests.js';
+import {runSetupTests} from './setup-tests.js';
 import {runSceneStoryTests} from './scene-story-tests.js';
 import {runSceneControlsTests} from './scene-controls-tests.js';
 import {runPerformanceTests} from './performance-tests.js';
@@ -244,8 +250,14 @@ await runRecognitionTests({test,assert,setup,wait,ctx,characters,extension_setti
 await runPresentationTests({test,assert,setup,native,wait,ctx,characters,bridge:()=>bridge});
 await runMappingTests({test,assert,setup,wait,ctx,extension_settings,bridge:()=>bridge});
 await runSceneTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
+await runSceneBehaviorTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
+await runSceneRequestCleanupTests({test,assert,setup,native,ctx,bridge:()=>bridge});
+await runSingleImageTests({test,assert,setup,native,ctx,bridge:()=>bridge,wait});
+await runSceneFidelityTests({test,assert,setup,wait});
+await runSceneScrollTests({test,assert,setup,native,ctx,bridge:()=>bridge,wait});
 await runSceneControlsTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
 await runSceneStoryTests({test,assert,setup,native,wait,ctx,bridge:()=>bridge});
+await runSetupTests({test,assert,setup,ctx,bridge:()=>bridge,wait});
 await runOutfitTests({test,assert,setup,wait,ctx,bridge:()=>bridge});
 await runBilingualTests({test,assert,setup});
 await runAuditTests({test,assert,setup,wait,characters});

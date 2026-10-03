@@ -5,16 +5,17 @@ const entities = text => text.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbs
     const number = key[1].toLowerCase() === 'x' ? parseInt(key.slice(2),16) : Number(key.slice(1));
     return number >= 32 && number <= 0x10ffff && !(number >= 0xd800 && number <= 0xdfff) ? String.fromCodePoint(number) : all;
 });
-export function parseSceneText(body, textTags) {
+export function parseSceneText(body, textTags, palette) {
     if (!body.trim() || body.length > 12000 || /\{\{/.test(body)) fail();
     const runs = [], stack = [];
     const add = (text, extra = []) => {
         if (!text) return;
         const marks = [...new Set([...stack.map(x=>x.mark).filter(Boolean), ...extra])];
         const kind = stack.findLast(x=>x.kind)?.kind ?? 'dialogue';
+        const speaker = stack.findLast(x=>x.speaker)?.speaker;
         const last = runs.at(-1);
-        if (last && last.kind === kind && String(last.marks) === String(marks)) last.text += text;
-        else runs.push({text, marks, kind});
+        if (last && last.kind === kind && last.speaker===speaker && String(last.marks) === String(marks)) last.text += text;
+        else runs.push({text, marks, kind,...(speaker?{speaker}:{})});
         if (runs.length > 2048) fail();
     };
     const inline = raw => {
@@ -46,7 +47,8 @@ export function parseSceneText(body, textTags) {
         if (tag==='p' && runs.length && !runs.at(-1).text.endsWith('\n')) add('\n');
         const mark=({b:'strong',strong:'strong',em:'em',i:'em',u:'u',s:'s',del:'s'})[tag];
         const label=wrapper?.[1] ?? span?.[1];
-        stack.push({tag,mark,kind:label==='narration'?'narration':label?'dialogue':undefined});
+        const narration=label==='narration'||palette?.narrationTags.includes(label);
+        stack.push({tag,mark,kind:narration?'narration':label?'dialogue':undefined,...(palette&&wrapper&&!narration?{speaker:label}:{})});
         if (stack.length>16) fail();
     }
     inline(body.slice(cursor));

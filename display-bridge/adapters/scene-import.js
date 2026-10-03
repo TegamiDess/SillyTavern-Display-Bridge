@@ -2,6 +2,8 @@
 // are inspected, never evaluated or installed as executable behavior.
 import {validatePortraitPreset} from './portrait-dialogue.js';
 import {compileSourceContext,coveredSourceMacros} from './scene-source-context.js';
+import {compileSceneBehavior} from './scene-behavior.js';
+import {compileSingleImage} from './scene-single-image.js';
 import {compileSceneNormalization} from './scene-normalization.js';
 const id=s=>/^[A-Za-z][\w-]{0,50}$/.test(s)&&!['constructor','prototype','__proto__'].includes(s);
 const plain=(s,n=256)=>typeof s==='string'&&s.length>0&&s.length<=n&&!/[<>{}\x00-\x1f]/.test(s);
@@ -29,6 +31,11 @@ export function assembleSceneImport(source,preset){
  const hasAsset=(name,audio=false)=>assets.some(a=>a.name===name&&(audio?/^(mp3|wav|ogg)$/i.test(a.ext):/^(png|jpe?g|webp|gif|bmp|avif)$/i.test(a.ext)));
  try{
   const initial=defaults(risu.defaultVariables),controls={version:1},state={version:2,variables:{},rules:[],derive:[],roster:[]};
+  const behavior=compileSceneBehavior(source,initial);coverage.push(...behavior.coverage);
+  if(behavior.behavior)preset={...preset,sceneBehavior:preset.sceneBehavior??behavior.behavior};
+  const single=compileSingleImage(source,behavior.behavior);coverage.push(...single.coverage);
+  for(const [index,reason]of single.adaptedRules)adaptedRules.set(index,reason);
+  if(single.layout)preset={...preset,format:{...preset.format,singleImage:single.layout}};
   const normalized=compileSceneNormalization(source);
   for(const [index,reason]of normalized.adapted)adaptedRules.set(index,reason);
   if(normalized.normalization){preset={...preset,format:{...preset.format,normalization:normalized.normalization}};add('Scene normalization','ready',`${normalized.adapted.size} field-scoped corrections; dialogue and stored source remain unchanged.`);}
@@ -94,7 +101,7 @@ export function assembleSceneImport(source,preset){
    add('Music',state.literals.some(l=>l.value!==null)?'ready':'partial',`${tracks.length} local track bindings. Initial Play is required; automatic selection follows recognized BGM annotations, not guessed background names.`);
    if(initial.bgm!==undefined&&initial.bgm!=='0'&&!codes.has(initial.bgm))add('Initial music','missing','The declared initial music code has no matching track.');
   }
-  if(!Object.keys(state.variables).length){if(source.requiredMacros?.length||Object.keys(initial).length||triggers.some(t=>t.effect?.length)||rules.some(r=>['editinput','editoutput'].includes(r.type)&&(r.in||r.out)))add('State and media','unsupported','Source state or input/output dependencies are present but no reviewed roster or local music source was found.');return {preset,coverage,adaptedRules,adaptedTriggers};}
+  if(!Object.keys(state.variables).length){if(source.requiredMacros?.length||Object.keys(initial).some(key=>!behavior.defaultsUsed.includes(key))||triggers.some(t=>t.effect?.length)||rules.some(r=>['editinput','editoutput'].includes(r.type)&&(r.in||r.out)))add('State and media','unsupported','Source state or input/output dependencies are present but no reviewed roster or local music source was found.');return {preset,coverage,adaptedRules,adaptedTriggers};}
   if(entities.length){state.context={title:'Current scene facts',fields:entities.flatMap(e=>[{key:e.id+'_p',label:e.id+' score'},{key:e.id+'_loc',label:e.id+' location'},{key:e.id+'_r',label:e.id+' relationship'}])};add('Model context','ready','Declared roster facts are supplied after Conversation state is initialized. Source prompt macros and history edits are not evaluated.');}
   for(const name of [...entities.flatMap(e=>[e.portrait,...(e.badges??[]).map(b=>b.image)]),...tracks.map(t=>t.asset)].filter(Boolean))if(!hasAsset(name,tracks.some(t=>t.asset===name)))add('Asset','missing',`No matching declared local asset: ${name}`);
   const contextSource=compileSourceContext(source,initial,state);

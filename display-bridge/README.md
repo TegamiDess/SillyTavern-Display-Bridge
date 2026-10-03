@@ -1,6 +1,6 @@
-# Display Bridge 0.19.0
+# Display Bridge 0.22.0
 
-Renders supported card UI inside SillyTavern using reviewed adapters and portable profiles. Companion V3 Asset Sprites 0.9.0 supplies declared local images and CHARX import handoff.
+Renders supported card UI inside SillyTavern using reviewed adapters and portable profiles. Companion V3 Asset Sprites 0.10.0 supplies declared local images and CHARX import handoff.
 
 Start with the [beginner import guide](../START-HERE.md) for step-by-step card setup.
 

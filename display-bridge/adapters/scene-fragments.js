@@ -1,6 +1,7 @@
 // Fixed bridge-owned grammar. Imported regular expressions and templates are
 // inspected during discovery only; they are never evaluated against messages.
 import {sceneSnapshotSuffix} from './scene-controls.js';
+import {validateSingleImage,matchesSingleImage} from './scene-single-image.js';
 import {parseSceneText} from './scene-text.js';
 import {validateSceneNormalization,normalizeSceneAsset} from './scene-normalization.js';
 const fail = message => { throw Error('Scene fragments: ' + message); };
@@ -8,7 +9,8 @@ const shape = (value, keys) => {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !keys.includes(k))) fail('unknown fields');
 };
 export function validateSceneFragments(format) {
-    shape(format, ['kind', 'backgrounds', 'castFields', 'counts', 'dialogueOpeners', 'textTags', 'details', 'normalization']);
+    shape(format, ['kind', 'backgrounds', 'castFields', 'counts', 'dialogueOpeners', 'textTags', 'details', 'normalization','singleImage']);
+    if(format.singleImage!==undefined){validateSingleImage(format.singleImage);if(format.castFields!==4||!format.counts?.includes(1))fail('single-image layout requires four cast fields and count 1');}
     if(format.normalization!==undefined)validateSceneNormalization(format.normalization);
     if (format.kind !== 'scene-fragments') fail('unknown format');
     const choices = (values, allowed) => Array.isArray(values) && values.length > 0 && values.length <= allowed.length && new Set(values).size === values.length && values.every(x => allowed.includes(x));
@@ -52,7 +54,7 @@ function dialogueText(body, textTags) {
     return body.trim();
 }
 
-export function parseSceneFragments(source, config, excluded) {
+export function parseSceneFragments(source, config, excluded, depth=0) {
     const result = {blocks: [], incomplete: 0, unsupported: 0}, f = config.format;
     const headers = [];
     for (const layout of f.backgrounds) {
@@ -82,6 +84,10 @@ export function parseSceneFragments(source, config, excluded) {
             for (let j = 0; j < n; j++) {
                 const match = tuple.exec(window.slice(cursor));
                 if (!match) fail('incomplete or unsupported cast');
+                if(matchesSingleImage(match[1],f.singleImage)){
+                    const offset=sceneOffset(match[2]);if(n!==1||!offset)fail('single-image layout needs one image and a vertical offset');
+                    portraits.push({image:normalizeSceneAsset(match[1],f.normalization),offset,geometry:'single-image',singleImage:f.singleImage});cursor+=match[0].length;continue;
+                }
                 if(sceneOffset(match[2]))fail('single-image pose cannot be treated as a hover pair');
                 const portrait={image: normalizeSceneAsset(match[1],f.normalization), hover: normalizeSceneAsset(match[2],f.normalization)};
                 if(f.details?.castMetadata){
@@ -104,7 +110,7 @@ export function parseSceneFragments(source, config, excluded) {
             const closing = open[1] ? /^<\/div>\s*<\/div>/.exec(window.slice(end)) : /^<\/div>/.exec(window.slice(end));
             if (!closing) { result.incomplete++; continue; }
             finish = h.end + end + closing[0].length;
-            const body=window.slice(cursor,end);content=f.details?parseSceneText(body,f.textTags):{dialogue:dialogueText(body,f.textTags)};
+            const body=window.slice(cursor,end);content=f.details?parseSceneText(body,f.textTags,config.speakerColors):{dialogue:dialogueText(body,f.textTags)};
             }
             if (excluded.some(([a, b]) => h.start < b && finish > a)) continue;
             const [rawBackground, second, third, fourth, fifth] = h.values, background=normalizeSceneAsset(rawBackground,f.normalization,true);
@@ -116,7 +122,7 @@ export function parseSceneFragments(source, config, excluded) {
                 details.period=h.layout==='numbered-five'?(['daytime','dusk','night','midnight'].includes(second)?second:undefined):(Object.hasOwn(f.details.periodAssets,second)?f.details.periodAssets[second]:undefined);
                 details.layers=f.details.layers&&h.layout!=='numbered-five'?[{role:'sky',asset:second,opacity:1},{role:'effect',asset:third,opacity:.7}]:[];
             }
-            result.blocks.push({type:'portrait-dialogue', presentation:'scene', start:h.start, end:finish, config, background, portraits, portrait:portraits[0]?.image ?? '', speaker:'', ...content, ...metadata, ...details, ...sceneSnapshotSuffix(source,finish,config)});
+            result.blocks.push({type:'portrait-dialogue', presentation:'scene', ...(config.sceneBehavior?.maxMessageDepth!==undefined&&depth>config.sceneBehavior.maxMessageDepth?{historyTextOnly:true}:{}), start:h.start, end:finish, config, background, portraits, portrait:portraits[0]?.image ?? '', speaker:'', ...content, ...metadata, ...details, ...sceneSnapshotSuffix(source,finish,config)});
         } catch { result.unsupported++; }
     }
     for (const b of result.blocks) b.controls = b === result.blocks.at(-1);

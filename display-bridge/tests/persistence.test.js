@@ -14,7 +14,7 @@ test('Preference import rejects invalid files atomically and exports no runtime 
     const state={};const p=createPreferences({state:()=>state,save:()=>{}});p.set('a','chat','report');
     const exported=p.exportFor('a');p.importFor('b',exported);assert.equal(p.get('b','chat'),'report');
     const before=JSON.stringify(state);
-    for(const bad of [{...exported,schemaVersion:3},{...exported,chats:[{chat:'chat',mode:'execute'}]},{...exported,chats:[{chat:'new',mode:'auto'},{chat:'new',mode:'report'}]},{...exported,script:'no'}])assert.throws(()=>p.importFor('a',bad));
+    for(const bad of [{...exported,schemaVersion:5},{...exported,chats:[{chat:'chat',mode:'execute'}]},{...exported,chats:[{chat:'new',mode:'auto'},{chat:'new',mode:'report'}]},{...exported,script:'no'}])assert.throws(()=>p.importFor('a',bad));
     assert.equal(JSON.stringify(state),before);assert.deepEqual(Object.keys(exported).sort(),['chats','kind','schemaVersion']);
     assert.equal(p.set('a','','report'),false);assert.equal(p.set('a','chat','script'),false);
 });

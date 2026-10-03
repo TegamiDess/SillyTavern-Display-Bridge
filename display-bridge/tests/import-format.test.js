@@ -29,3 +29,15 @@ test('Native bare-image rule matches only exact declared names in simple tags',(
     for(const text of ['<img src="unknown">','<img src="/absolute.png">','<img src="https://example.test/a">','<img src="axb2">','<img src="Lerevan Peinard" onerror="anything">']) assert.equal(match(text),null);
     assert.equal(namedImageRule([]),null);
 });
+
+test('Native named-image rule handles char attributes without broadening src or asset-name matching',()=>{
+    const spec=namedImageRule(['smile','shy','neutral','happy-wave','a.b(2)']);
+    const match=text=>new RegExp(spec.source,spec.flags).exec(text);
+    for(const [text,name] of [['<img char=smile>','smile'],['<img char="shy">','shy'],["<IMG CHAR='neutral' />",'neutral'],['<img char = happy-wave/>','happy-wave'],['<img char="a.b(2)">','a.b(2)']]) {
+        assert.equal(match(text)?.[2],name);
+        assert.equal(text.replace(new RegExp(spec.source,spec.flags),spec.output),`<img src="${name}">`);
+    }
+    const text='<img char=smile> Welcome.\n<img char=shy> Hello.\n<img char=neutral> A quiet library.';
+    assert.deepEqual([...text.matchAll(new RegExp(spec.source,spec.flags))].map(m=>m[2]),['smile','shy','neutral']);
+    for(const value of ['<img char=unknown>','<img char=Smile>','<img char="smile\'>','<img char=smile onerror=anything>','<img char=smile src="other">','<img char=https://example.test/smile>','<img char=../smile>','<img character=smile>','<img src=smile>']) assert.equal(match(value),null,value);
+});

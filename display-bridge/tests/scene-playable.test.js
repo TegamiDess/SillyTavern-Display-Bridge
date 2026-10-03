@@ -54,7 +54,7 @@ test('Missing background destinations are reported and never guessed',()=>{
 });
 test('Request-only projection preserves user messages, code examples, shared objects and saved history',async()=>{
  const config=discover().profile.adapters[0].source,chat=[msg('{{getvar::fm}}&&& Hello. `&&&` \\&&&'),{is_user:true,mes:'&&& user text'}],ctx={chat,chatId:'qa',chatMetadata:{},onlineStatus:'connected',saveChat:async()=>{}};
- const host=createStoryState({getContext:()=>ctx,scope:()=>({identity:'qa',config})});await host.rebuild();const before=JSON.stringify(ctx.chat);const copy=[...chat];host.intercept(copy,0,()=>assert.fail());assert.equal(copy[0].mes,' Hello. `&&&` \\&&&');assert.equal(copy[1],chat[1]);assert.equal(JSON.stringify(ctx.chat),before);
+ const host=createStoryState({getContext:()=>ctx,scope:()=>({identity:'qa',config})});await host.rebuild();const before=JSON.stringify(ctx.chat);const copy=[...chat];host.intercept(copy,0,()=>assert.fail());assert.equal(copy[0].mes,' Hello. `&&&` \\&&&');assert.notEqual(copy[1],chat[1]);assert.equal(copy[1].mes,chat[1].mes+'\n\n'+host.context());assert.equal(JSON.stringify(ctx.chat),before);
  let aborted=false;assert.throws(()=>host.intercept(chat,0,()=>aborted=true),/live history/);assert.ok(aborted);
  const projected=projectSourceRequest([msg('&&&')],config.sceneState.request);assert.equal(projected[0].mes,'');assert.equal(sourceMarkerRanges('`&&&`',config.sceneState.request).length,0);
 });
@@ -63,6 +63,23 @@ test('Request context follows accepted output and swipe parents; cancellation ne
  let aborted=false;assert.throws(()=>host.intercept([...ctx.chat],0,()=>aborted=true),/Initialize/);assert.ok(aborted);await host.rebuild();assert.match(host.context(),/score=5/);
  host.begin('normal',{},false);ctx.chat.push(msg('<❤guide+3><MOVE_guide_Library>'));await host.received(1,'normal');host.end();assert.match(host.context(),/score=8 \/ location=Library/);
  const m=ctx.chat[1];m.swipe_id=1;host.begin('swipe',{},false);assert.match(host.context(),/score=5 \/ location=Observatory/);host.cancel();await host.received(1,'swipe');m.swipe_id=0;host.invalidate();assert.match(host.context(),/score=8/);
+});
+test('Roster append selects only the last user, preserves media and replaces its own request-only suffix',()=>{
+ const request=discover().profile.adapters[0].source.sceneState.request;
+ const chat=[{is_user:true,mes:'Earlier user'},msg('Earlier answer'),{is_user:true,mes:'&&& Keep this exact text.\n\nCurrent guides: user-authored example.',extra:{media:[{url:'local.png'}]}},msg('Answer to replace'),{is_user:true,is_system:true,mes:'System note'}],before=JSON.stringify(chat);
+ let copy=projectSourceRequest(chat,request,'Roster A');assert.equal(copy[0],chat[0]);assert.equal(copy[4].mes,chat[4].mes);assert.equal(copy[2].mes,chat[2].mes+'\n\nRoster A');assert.deepEqual(copy[2].extra,chat[2].extra);
+ copy=projectSourceRequest(copy,request,'Roster B');assert.equal(copy[2].mes,chat[2].mes+'\n\nRoster B');assert.equal(JSON.stringify(chat),before);
+ const retry=projectSourceRequest(chat,request,'Roster B');assert.equal(retry[2].mes,copy[2].mes);
+ assert.throws(()=>projectSourceRequest([msg('Greeting')],request,'Roster'),/needs a user message/);
+});
+test('Request append clears the system slot and uses the swipe parent without saving history',async()=>{
+ const config=discover().profile.adapters[0].source,prompts={display_bridge_scene_state:'Old system roster'},ctx={chat:[msg('Start'),{is_user:true,mes:'Hello.'}],chatId:'append',chatMetadata:{},onlineStatus:'connected',saveChat:async()=>{},setExtensionPrompt:(key,text)=>prompts[key]=text},host=createStoryState({getContext:()=>ctx,scope:()=>({identity:'append',config})});
+ await host.rebuild();host.prepare();assert.equal(prompts.display_bridge_scene_state,'');
+ host.begin('normal',{},false);ctx.chat.push(msg('<❤guide+3>'));await host.received(2,'normal');host.end();
+ const before=JSON.stringify(ctx.chat),copy=[...ctx.chat];host.intercept(copy,0,()=>assert.fail());assert.match(copy[1].mes,/score=8/);
+ host.begin('swipe',{},false);const swipe=[...ctx.chat];host.intercept(swipe,0,()=>assert.fail());assert.match(swipe[1].mes,/score=5/);assert.doesNotMatch(swipe[1].mes,/score=8/);host.cancel();
+ assert.equal(JSON.stringify(ctx.chat),before);assert.equal(prompts.display_bridge_scene_state,'');
+ const missing=[msg('Greeting')],original=JSON.stringify(missing);let aborted=false;assert.throws(()=>host.intercept(missing,0,()=>aborted=true),/needs a user message/);assert.ok(aborted);assert.equal(JSON.stringify(missing),original);assert.equal(prompts.display_bridge_scene_state,'');
 });
 test('Apostrophes in finite music labels are literal data, not expressions',()=>{
  const c=scenePlayableCard(),rule=c.data.extensions.risuai.customScripts.find(r=>r.in.includes('(Evening|Morning)'));rule.in=rule.in.replace('(Evening|Morning)',"(Evening|Morning|Guide's_Hop)");const r=discover(c);assert.equal(r.requiresReview,false);assert.ok(r.profile.adapters[0].source.sceneState.literals.some(l=>l.text==="<BGM=@BGM_02_Guide's_Hop>"));

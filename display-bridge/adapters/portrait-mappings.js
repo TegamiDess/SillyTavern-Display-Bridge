@@ -21,5 +21,6 @@ export function preservePortraitMappings(incoming,current) {
     next.variants=[...new Map([...incoming.variants,...current.variants].map(v=>[v.id,v])).values()];
     next.variantLabel=current.variantLabel;
     for(const key of ['imageMappings','metadataLabels','defaults','portraitLabels','appearance'])if(current[key])next[key]={...incoming[key],...current[key]};
+    if(current.sceneBehavior)next.sceneBehavior=JSON.parse(JSON.stringify(current.sceneBehavior));
     return next;
 }

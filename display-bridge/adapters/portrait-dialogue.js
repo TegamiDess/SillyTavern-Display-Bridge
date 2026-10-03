@@ -1,5 +1,8 @@
 import { validateSceneControls } from './scene-controls.js';
 import { validateSceneState } from './scene-state.js';
+import { validateSceneBehavior } from './scene-behavior.js';
+import { validateSceneLayout } from './scene-layout.js';
+import { validateSpeakerColors } from './speaker-colors.js';
 import { validateImageMappings, appearanceChoices, appearanceDefault } from './portrait-mappings.js';
 import { validatePresentationFormat, parsePresentation } from './presentation-formats.js';
 import { codeRanges } from '../core/parser.js';
@@ -13,7 +16,10 @@ const text=(x,max=160)=>typeof x==='string'&&x.length>0&&x.length<=max&&!/[\u000
 export const DEFAULT_PRESET={format:{kind:'fields',open:'[Scene|',close:']',fields:{speaker:'speaker',dialogue:'text',portrait:'image',time:'time',day:'day',date:'date',location:'place'}},variantLabel:'Appearance',variants:[],theme:{accent:'#ddae46',background:'#fff8e6',text:'#493a22',pattern:'gingham',position:'center'}};
 export function validatePortraitPreset(input){
     if(JSON.stringify(input)?.length>100000)fail('configuration too large');
-    shape(input,['format','variantLabel','variants','theme','imageMappings','metadataLabels','defaults','appearance','portraitLabels','sceneControls','sceneState']);
+    shape(input,['format','variantLabel','variants','theme','imageMappings','metadataLabels','defaults','appearance','portraitLabels','sceneControls','sceneState','sceneLayout','speakerColors','sceneBehavior']);
+    if(input.speakerColors!==undefined)validateSpeakerColors(input.speakerColors,input.format);
+    if(input.sceneBehavior!==undefined)validateSceneBehavior(input.sceneBehavior,input.format);
+    if(input.sceneLayout!==undefined)validateSceneLayout(input.sceneLayout,input.format);
     if(input.sceneState!==undefined){if(input.format?.kind!=='scene-fragments')fail('scene state needs scene fragments');validateSceneState(input.sceneState,input.sceneControls);}
     if(input.sceneControls!==undefined){if(input.format?.kind!=='scene-fragments')fail('scene controls need scene fragments');validateSceneControls(input.sceneControls);}
     const extended=['tagged','community','scene','scene-fragments'].includes(input.format?.kind);

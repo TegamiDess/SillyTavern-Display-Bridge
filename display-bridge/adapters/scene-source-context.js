@@ -52,6 +52,15 @@ export function sourceMarkerRanges(source,request){
 }
 // The host passes a disposable request copy. Return fresh objects as a further
 // guard against shared references; this never writes to the saved conversation.
-export function projectSourceRequest(messages,request){
- return messages.map(m=>{if(m.is_user||typeof m.mes!=='string')return m;let text=m.mes;for(const [a,b]of sourceMarkerRanges(text,request).reverse())text=text.slice(0,a)+text.slice(b);return {...m,mes:text};});
+const requestAppends=new WeakMap();
+export function projectSourceRequest(messages,request,context){
+ // Only remove our own in-memory suffix on a repeated pass. Never strip user
+ // text by matching a marker or a roster-looking passage in saved history.
+ const projected=messages.map(m=>{const previous=requestAppends.get(m);if(previous&&m.mes.endsWith(previous))m={...m,mes:m.mes.slice(0,-previous.length)};if(m.is_user||typeof m.mes!=='string')return m;let text=m.mes;for(const [a,b]of sourceMarkerRanges(text,request).reverse())text=text.slice(0,a)+text.slice(b);return {...m,mes:text};});
+ if(context){
+  const index=projected.findLastIndex(m=>m.is_user&&!m.is_system&&typeof m.mes==='string');
+  if(index<0)throw Error('Scene context needs a user message to append to. Send a message before generating.');
+  const suffix='\n\n'+context,message={...projected[index],mes:projected[index].mes+suffix};requestAppends.set(message,suffix);projected[index]=message;
+ }
+ return projected;
 }

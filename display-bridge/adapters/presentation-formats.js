@@ -31,7 +31,7 @@ export function parsePresentation(source,config,excluded=[],depth=0){
  const result={blocks:[],incomplete:0,unsupported:0},ranges=[...codeRanges(source),...excluded];
  const add=(start,end,data)=>{if(source[start-1]==='\\'||ranges.some(([a,b])=>start<b&&end>a))return;result.blocks.push({type:'portrait-dialogue',start,end,config,...data});ranges.push([start,end]);};
  const f=config.format;
- if(f.kind==='scene-fragments')return parseSceneFragments(source,config,ranges);
+ if(f.kind==='scene-fragments')return parseSceneFragments(source,config,ranges,depth);
  if(f.kind==='community'){
   // Fixed bridge-owned expression, not the imported pattern string.
   const re=/<img="([^"\r\n]+)">\s*\[ID:\s*([^|\]\r\n]*)\s*\|\s*Name:\s*([^|\]\r\n]*)\s*\|\s*Age:\s*([^|\]\r\n]*)\s*\|\s*Class:\s*([^\]\r\n]*)\]\s*\[Loc:\s*([^|\]\r\n]*)\s*\|\s*Attire:\s*([^|\]\r\n]*)\s*\|\s*Equipment:\s*([^|\]\r\n]*)\s*\|\s*Interests:\s*([^\]\r\n]*)\]\s*\[Mood:\s*([^|\]\r\n]*)\s*\|\s*Allocation:\s*([^|\]\r\n]*)\]\s*\[Personality:\s*([^\]\r\n]*)\]/g;

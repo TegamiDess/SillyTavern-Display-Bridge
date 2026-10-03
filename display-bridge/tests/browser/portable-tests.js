@@ -2,7 +2,7 @@ import {sceneControls,sceneSnapshot,suffix,neutralWav} from '/extension/tests/fi
 import {discoverProfile,portraitVersion} from '/extension/core/profiles.js';
 import {styledRule,afternoonStyles} from './presentation-style-fixture.js';
 import {communityRule,communityMessage} from './presentation-fixtures.js';
-import {sceneRules,sceneMessage} from './scene-fixture.js';
+import {sceneRules,sceneMessage,detailedSceneRules} from './scene-fixture.js';
 import {canonical} from './recovery.js';
 import {sceneImportCard} from '/extension/tests/fixtures/scene-import.js';
 
@@ -13,6 +13,13 @@ export async function runPortableTests({test,assert,setup,native,wait,ctx,charac
     const afternoon=profile([styledRule('guide','Alex','guide')]);
     Object.assign(afternoon.adapters[0].source,{imageMappings:{guide:'curator'},variants:[{id:'coat',label:'Coat',images:{guide:'coat'}}],appearance:{allowOriginal:false,defaultVariant:'coat'}});
     afternoon.adapters[0].version=portraitVersion(afternoon.adapters[0].source);
+    const setupScene=profile(detailedSceneRules('five'));
+    setupScene.adapters[0].source.speakerColors={version:1,speakers:{dialogue:{label:'Guide',color:'#82baff'}},narrationTags:['narration']};
+    setupScene.adapters[0].source.sceneLayout={version:1,aspectRatio:[16,8.5],maxWidth:1200,metadataPosition:'top'};
+    setupScene.adapters[0].source.sceneState={version:4,variables:{season:{type:'enum',initial:'unselected',values:['unselected','spring','winter']}},rules:[],setup:{version:1,title:'Season setup',fields:[{key:'season',label:'Season',required:true,unset:['unselected'],reset:true,native:true}],unique:[]}};
+    setupScene.adapters[0].version=portraitVersion(setupScene.adapters[0].source);
+    const startupMenu=structuredClone(setupScene);
+    startupMenu.adapters[0].source.sceneState.setup.screen={marker:'<setup-menu>',description:'Choose a season.',greeting:['Your visit begins in ',{read:'season'},'.']};
     const families=[
         ['asset-only',{kind:'display-bridge-profile',schemaVersion:1,adapters:[]},'<img="guide">'],
         ['Afternoon',afternoon,'<guide>"Ohayou!" (Good morning!)</guide>'],
@@ -20,6 +27,8 @@ export async function runPortableTests({test,assert,setup,native,wait,ctx,charac
         ['Witchcure',{kind:'display-bridge-profile',schemaVersion:1,adapters:[{id:'witchcure',version:1,source:await(await fetch('./witchcure-fixture.json')).json()}]},'[명부]'],
         ['streamer',{kind:'display-bridge-profile',schemaVersion:1,adapters:[{id:'media-panel',version:1}]},'[Assets:guide|Chat:<p><span>Alex</span><span>Hello</span></p>|Time:18:00|AkaChat:Ready]'],
         ['assembled scene',profile(sceneRules('four')),sceneMessage('four')],
+        ['setup scene',setupScene,sceneMessage('five')],
+        ['startup menu',startupMenu,'<setup-menu>'],
     ];
     async function transport(run) {
         const start=characters.length,files=new Map();let next=0,confirm=()=>true,writes=0;
@@ -104,7 +113,7 @@ export async function runPortableTests({test,assert,setup,native,wait,ctx,charac
             assert(secondRules.find(r=>r.id===disabled.id).replaceString!==disabled.replaceString,'Local marker reused');
             const count=secondRules.length;await window.v3sprites.recovery.resync({avatar:second.avatar});assert(characters[ctx.characterId].data.extensions.regex_scripts.length===count,'Rescan duplicated rules');
             native(message);bridge().render();await wait();
-            if(definition.adapters.length)assert(document.querySelector('#chat .display-bridge-widget'),'UI did not render after round trip');
+            if(definition.adapters.length)assert(document.querySelector(name==='startup menu'?'#chat .db-startup-screen':'#chat .display-bridge-widget'),'UI did not render after round trip');
             const again=await window.v3sprites.exportCard(second.avatar,{download:false});assert(again?.file);const zip2=await JSZip.loadAsync(await again.file.arrayBuffer()),card2=JSON.parse(await zip2.file('card.json').async('string'));
             assert(canonical(card2)===canonical(card),'Export/import/export changed portable card');
         });

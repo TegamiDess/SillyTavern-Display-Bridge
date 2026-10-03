@@ -1,6 +1,6 @@
 # Automatic scene import — 0.20.0
 
-Use Display Bridge **0.20.0** with V3 Asset Sprites **0.9.1**. Recognized scene layout, roster, local music, state operations and a reviewed request-context wrapper assemble into one portable profile. It does not interpret arbitrary Risu scripts.
+Use Display Bridge **0.22.0** with V3 Asset Sprites **0.10.0**. Recognized scene layout, roster, local music, state operations and request-only context delivery assemble into one portable profile. It does not interpret arbitrary Risu scripts.
 
 ## Try it without editing JSON
 
@@ -49,4 +49,14 @@ An explicit embedded profile takes precedence. Reattachment stages changes when 
 
 The inspected To Love Ru source yields 16 roster entries, 13 tracks, seven update patterns and 15 finite badge lookups. Its reviewed greeting/context dependency now converts, and its background-only greeting parses. Ten source normalization/closure rules are recognized. Two declared background-alias destinations are absent, one badge group is missing, and eleven other trigger groups plus three input/output rules remain outside support. Some original asset references also contain punctuation/encoding mismatches; use exact image mappings rather than assuming a different asset.
 
-This remains a **partial import requiring review**. Ordinary scene/state/music functionality is testable; specialized poses and dynamic sound interactions are not fully ported. A single-image/offset tuple is no longer misread as a normal hover pair. Random initialization, destructive source-history rewriting, general Lua/STscript and arbitrary conditional greetings remain unsupported. Stage 8's combined release acceptance remains separate.
+This remains a **partial import requiring review**. Ordinary scene/state/music functionality is testable. The reviewed [single-image/offset layout](SINGLE-IMAGE-LAYOUT.md) is supported by adapter 20; other specialized poses and dynamic sound interactions are not fully ported. Undeclared offset tuples are not misread as normal hover pairs. Random initialization, destructive source-history rewriting, general Lua/STscript and arbitrary conditional greetings remain unsupported. Stage 8's combined release acceptance remains separate.
+
+## Request-only roster append
+
+For profiles with the reviewed `sceneState.request` wrapper, the roster is now appended after two newlines to the latest non-system user message in SillyTavern's disposable request copy. Display Bridge clears its separate `display_bridge_scene_state` prompt slot. This replaces the earlier system-role injection for this source wrapper; other setup/context-only profiles retain their existing delivery.
+
+Saved user messages, earlier user messages, media metadata and story state are untouched. Each new request starts from native history. Reprocessing the same projected objects replaces only the suffix tracked in memory by this extension; roster-looking user text is never stripped by a pattern. With no eligible user message, interception aborts with an instruction to send a user message rather than silently falling back to a system prompt. Existing swipe/regenerate state selection is retained.
+
+The native host skips generation interceptors in its dry-run path. A dry-run prompt preview therefore does not establish the presence of this append. Local acceptance used the actual native `runGenerationInterceptors` function on a disposable copy of the saved To Love Ru conversation, without a provider request. Eight checks passed, alongside 216 unit and 164 visible-browser checks. This verifies interception, not final provider-specific serialization or removal of system messages from unrelated sources.
+
+This follow-up implements append delivery only. Manual role/depth selection is not implemented. It does not reproduce Risu's destructive history edits or migrate previously modified Risu chat history. The portable profile declaration is unchanged; recipients need this updated runtime for the new delivery behaviour. Available in Display Bridge 0.22.0.

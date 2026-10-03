@@ -4,9 +4,16 @@ export function captureDisplaySource(card, origin) {
     const data = card?.data ?? card ?? {};
     const extensions = data.extensions ?? {};
     const risu = extensions.risuai ?? {};
+    for(const trigger of Array.isArray(risu.triggerscript)?risu.triggerscript:[]){
+        if(typeof trigger?.comment==='string'&&trigger.comment.length>120)throw Error('Action identifier exceeds the supported import size.');
+        for(const effect of Array.isArray(trigger?.effect)?trigger.effect:[])for(const key of ['sourceType','role','display','displayType','regex','regexType','flags','flagsType','result','resultType']){
+            const value=effect?.[key];
+            if(value!==undefined&&(!['string','number','boolean'].includes(typeof value)||typeof value==='string'&&value.length>30000||typeof value==='number'&&!Number.isFinite(value)))throw Error('Unsupported action metadata: '+key);
+        }
+    }
     const macroFields=[...[data.first_mes,...(Array.isArray(data.alternate_greetings)?data.alternate_greetings:[])].map(text=>({field:'greeting',text})),
         ...[data.description,data.personality,data.scenario,data.system_prompt,data.post_history_instructions,data.mes_example,...(Array.isArray(data.character_book?.entries)?data.character_book.entries:[]).map(e=>e?.content)].map(text=>({field:'prompt',text}))];
-    const source = { sourceVersion:1, ruleOptionsVersion:1, sceneSourceVersion:1, contextSourceVersion:1,
+    const source = { sourceVersion:1, ruleOptionsVersion:1, sceneSourceVersion:1, contextSourceVersion:1, actionSourceVersion:1,
         macroReferences:macroFields.flatMap(({field,text})=>[...String(text??'').matchAll(/\{\{\s*(getvar|setvar|#if(?:_pure)?)\b([^}]*)(?:\}\}|$)/gi)].map(m=>({field,kind:m[1].toLowerCase(),name:m[2].replace(/^::/,'').trim()}))).slice(0,1000),
         assets:(Array.isArray(data.assets)?data.assets:[]).slice(0,10000).map(a=>({name:String(a?.name??''),type:String(a?.type??''),ext:String(a?.ext??'')})),
         requiredMacros:[...new Set(macroFields.flatMap(({text})=>[...String(text??'').matchAll(/\{\{\s*(getvar|setvar|#if(?:_pure)?)\b/gi)].map(m=>m[1].toLowerCase())))],
@@ -18,8 +25,9 @@ export function captureDisplaySource(card, origin) {
             matchOptions:Object.fromEntries(['ableFlag','flag','flags'].filter(key=>Object.hasOwn(rule??{},key)).map(key=>[key,key==='ableFlag'?(typeof rule[key]==='boolean'?rule[key]:null):(typeof rule[key]==='string'&&rule[key].length<=200?rule[key]:null)])),
         })),
         triggerscript: (Array.isArray(risu.triggerscript) ? risu.triggerscript : []).map(trigger => ({
+            ...(typeof trigger?.comment==='string'&&trigger.comment.length<=120?{comment:trigger.comment}:{}),
             type: String(trigger?.type ?? ''), conditions:Array.isArray(trigger?.conditions)?JSON.parse(JSON.stringify(trigger.conditions)):[], effect: (Array.isArray(trigger?.effect) ? trigger.effect : []).map(effect => ({
-                ...Object.fromEntries(Object.entries(effect??{}).filter(([k,v])=>['operator','var','value','valueType','indent','condition','targetType','target','source','endOfLoop','outputVar','index','indexType','source1','source1Type','source2','source2Type'].includes(k)&&['string','number','boolean'].includes(typeof v))),
+                ...Object.fromEntries(Object.entries(effect??{}).filter(([k,v])=>['operator','var','value','valueType','indent','condition','targetType','target','source','sourceType','role','display','displayType','regex','regexType','flags','flagsType','result','resultType','endOfLoop','outputVar','index','indexType','source1','source1Type','source2','source2Type'].includes(k)&&['string','number','boolean'].includes(typeof v))),
                 type: String(effect?.type ?? ''), ...(typeof effect?.code === 'string' ? { code:effect.code } : {}),
             })),
         })),

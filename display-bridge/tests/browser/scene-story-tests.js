@@ -11,6 +11,33 @@ export async function runSceneStoryTests({test,assert,setup,native,wait,ctx,brid
  const information=()=>document.getElementById('display-bridge-chat-information')?.shadowRoot;
  let prompts;
  const install=(text=sceneMessage(),c=config())=>{const m=setup(text,{stream:false});ctx.chatId='story';ctx.chatMetadata={};ctx.saveChat=async()=>{};ctx.onlineStatus='connected';prompts={};ctx.setExtensionPrompt=(id,value)=>{prompts[id]=value;};bridge().importProfile('test-a.png',{kind:'display-bridge-profile',schemaVersion:1,adapters:[{id:'portrait-dialogue',version:portraitVersion(c),source:c}]});bridge().applyPending('test-a.png');bridge().render();return m;};
+ await test('Chat opacity sliders preview without rebuilding, isolate chats, and reset only appearance',async()=>{
+  const m=install(),source=m.mes,profile=JSON.stringify(bridge().exportProfile('test-a.png'));await wait();
+  const dock=document.getElementById('display-bridge-chat-dock').shadowRoot;dock.querySelector('details').open=true;
+  const dialogue=dock.querySelector('[aria-label="Dialogue background"]'),status=dock.querySelector('[aria-label="Status background"]'),scene=roots()[0],speech=scene.querySelector('.speech'),tip=scene.querySelector('.portrait-tooltip'),color=getComputedStyle(scene.querySelector('.words')).color;
+  assert(dialogue.value==='80'&&status.value==='92');dialogue.value='60';dialogue.dispatchEvent(new Event('input'));bridge().render();
+  assert(roots()[0]===scene,'Opacity remounted scene');assert(/\/ 0\.6\)/.test(getComputedStyle(speech).backgroundColor),'Dialogue alpha did not reach shadow root');
+  assert(getComputedStyle(scene.querySelector('.words')).color===color&&getComputedStyle(speech).opacity==='1','Opacity faded lettering');dialogue.dispatchEvent(new Event('change'));
+  status.value='100';status.dispatchEvent(new Event('input'));status.dispatchEvent(new Event('change'));assert(!getComputedStyle(tip).backgroundColor.includes('/ 0.92'));
+  ctx.chatId='opacity-other';bridge().render();assert(dialogue.value==='80'&&status.value==='92','Preferences leaked to another chat');
+  ctx.chatId='story';bridge().render();assert(dialogue.value==='60'&&status.value==='100','Saved opacity was not restored');
+  assert(JSON.stringify(bridge().exportProfile('test-a.png'))===profile&&m.mes===source,'Appearance entered card/story data');
+  [...dock.querySelectorAll('button')].find(b=>b.textContent==='Reset appearance').click();assert(dialogue.value==='80'&&status.value==='92');assert(m.mes===source);
+ });
+ await test('Speaker colours render through formatting, toggle per chat, and survive palette editing',async()=>{
+  const c=config();c.speakerColors={version:1,speakers:{dialogue:{label:'Guide',color:'#82baff'},guest:{label:'Guest',color:'#25202e'}},narrationTags:['narration']};
+  const text=sceneMessage().replace('Welcome to the observatory.','<strong>Welcome</strong> to the observatory.</text><text="guest">Good evening.</text><text="unknown">Welcome back.'),m=install(text,c);await wait();
+  const scene=roots()[0],words=scene.querySelector('.words'),lines=words.querySelectorAll('.speaker-line');
+  assert(lines.length===3&&lines[0].dataset.speaker==='dialogue'&&lines[2].dataset.speaker==='guest');assert(lines[0].querySelector('strong'),'Formatting lost inside speaker');
+  assert(!words.querySelector('.scene-narration .speaker-line')&&words.textContent.includes('Welcome back.'),'Narration or unmapped speech lost');
+  const blue=getComputedStyle(lines[0]).color;assert(blue!==getComputedStyle(words).color);assert(getComputedStyle(lines[2]).textShadow.includes('255, 255, 255'),'Dark speaker lacks contrast halo');
+  const dock=document.getElementById('display-bridge-chat-dock').shadowRoot,toggle=dock.querySelector('[aria-label="Character colours"]');assert(toggle.checked&&!toggle.parentElement.hidden);toggle.click();
+  assert(roots()[0]===scene&&getComputedStyle(lines[0]).color!==blue,'Toggle did not update existing scene');assert(getComputedStyle(lines[1]).textShadow==='none');
+  ctx.chatId='speaker-other';bridge().render();assert(toggle.checked,'Another chat inherited disabled colours');ctx.chatId='story';bridge().render();assert(!toggle.checked,'Saved toggle lost');toggle.click();assert(getComputedStyle(roots()[0].querySelector('.words .speaker-line')).color===blue,'Reopened scene did not restore colour');assert(m.mes===text,'Appearance altered story text');
+  let reviewed;const editor=createPresetEditor({source:c,avatar:'test-a.png',review:v=>reviewed=v,close(){}});document.body.append(editor);
+  [...editor.querySelectorAll('button')].find(b=>b.textContent==='Review preset for this character').click();assert(JSON.stringify(reviewed.speakerColors)===JSON.stringify(c.speakerColors));
+  editor.querySelector('[aria-label="Text colour"]').value='#abcdef';[...editor.querySelectorAll('button')].find(b=>b.textContent==='Review preset for this character').click();assert(reviewed.speakerColors.speakers.dialogue.color==='#abcdef');editor.remove();
+ });
  await test('State profile v8 round trips and the mapping editor preserves all state configuration',async()=>{
   install();const exported=bridge().exportProfile('test-a.png');assert(exported.adapters[0].version===8);assert(JSON.stringify(validateProfile(exported))===JSON.stringify(exported));const old=structuredClone(exported);old.adapters[0].version=7;let rejected=false;try{validateProfile(old);}catch{rejected=true;}assert(rejected,'Old adapter version accepted new state');
   let reviewed;const editor=createPresetEditor({source:config(),avatar:'test-a.png',review:c=>reviewed=c,close(){}});document.body.append(editor);
@@ -64,7 +91,7 @@ export async function runSceneStoryTests({test,assert,setup,native,wait,ctx,brid
  await test('Automatic context conversion renders corrected scenes and cleans only request/display copies',async()=>{
   const card=scenePlayableCard(),p=discoverProfile(captureDisplaySource(card)).profile.adapters[0].source,m=install(card.data.first_mes,p),original=m.mes;
   await bridge().story.rebuild();bridge().render();await wait();assert(roots().length===1,'Corrected scene did not render');assert(!document.querySelector('.mes_text').textContent.includes('&&&'));
-  bridge().story.prepare();assert(prompts.display_bridge_scene_state.includes('score=5'));const request=[...ctx.chat];bridge().story.intercept(request,0,()=>assert(false,'Aborted'));assert(!request[0].mes.includes('{{getvar::fm}}'));assert(m.mes===original,'Saved greeting was changed');assert(bridge().exportProfile('test-a.png').adapters[0].version===10);
+  ctx.chat.push({is_user:true,mes:'Hello, guides.'});bridge().story.prepare();assert(prompts.display_bridge_scene_state==='','Roster still injected as system');const before=JSON.stringify(ctx.chat),request=[...ctx.chat];bridge().story.intercept(request,0,()=>assert(false,'Aborted'));assert(!request[0].mes.includes('{{getvar::fm}}'));assert(request[1].mes==='Hello, guides.\n\n'+bridge().story.context());bridge().story.intercept(request,0,()=>assert(false,'Aborted'));assert(request[1].mes==='Hello, guides.\n\n'+bridge().story.context(),'Duplicate append');assert(JSON.stringify(ctx.chat)===before&&m.mes===original,'Saved history was changed');assert(bridge().exportProfile('test-a.png').adapters[0].version===10);
  });
  await test('Zero-cast greeting shows its background without an empty dialogue box or hidden narration',async()=>{
   const card=scenePlayableCard();card.data.extensions.risuai.customScripts.find(r=>r.in==='<0>').out='</div>';

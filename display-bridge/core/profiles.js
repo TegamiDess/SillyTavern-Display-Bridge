@@ -1,3 +1,4 @@
+import {coveredSetupMacros} from '../adapters/scene-setup.js';
 import {inspectSceneRule, assembleSceneRules, sceneOffsetAliases} from '../adapters/scene-recognition.js';
 import {assembleSceneImport} from '../adapters/scene-import.js';
 import {coveredSourceMacros} from '../adapters/scene-source-context.js';
@@ -26,7 +27,7 @@ export function validateProfile(input, css) {
     const seen = new Set();
     const adapters = input.adapters.map(adapter=>{
         object(adapter,['id','version','source']);
-        if (!IDS.has(adapter.id) || ![1,...(adapter.id==='portrait-dialogue'?[2,3,4,5,6,7,8,9,10,11]:adapter.id==='witchcure'?[2]:[])].includes(adapter.version) || seen.has(adapter.id)) fail('unknown, repeated or unsupported adapter');
+        if (!IDS.has(adapter.id) || ![1,...(adapter.id==='portrait-dialogue'?[2,3,4,5,6,7,8,9,10,11,12,13,14,18,19,20]:adapter.id==='witchcure'?[2]:[])].includes(adapter.version) || seen.has(adapter.id)) fail('unknown, repeated or unsupported adapter');
         seen.add(adapter.id);
         if(adapter.id==='portrait-dialogue') {const source=validatePortraitPreset(adapter.source);if(adapter.version<portraitVersion(source))fail('portrait fields require adapter version '+portraitVersion(source));return {id:adapter.id,version:adapter.version,source};}
         if (adapter.id !== 'witchcure') {
@@ -68,7 +69,7 @@ export function discoverProfile(source, css) {
         const profile = validateProfile(source.profile,css);
         if (rules.length || effects.length) notes.push('An explicit profile was used. Other imported scripts were not executed.');
         adapters.push(...profile.adapters);
-        const unresolved=adapters.some(a=>a.source?.format?.kind==='scene-fragments'&&!coveredSourceMacros(source,a.source.sceneState?.request))&&source.requiredMacros?.length;
+        const unresolved=source.requiredMacros?.length&&!adapters.some(a=>coveredSourceMacros(source,a.source?.sceneState?.request)||coveredSetupMacros(source,a.source?.sceneState?.setup));
         if(unresolved){assembly={coverage:[{feature:'Startup / prompt macros',status:'unsupported',reason:'The explicit profile is preserved, but source greeting/prompt macros still require review: '+source.requiredMacros.join(', ')+'.'}]};notes.push(assembly.coverage[0].reason);}
         return { profile, notes, discovery:details(), ...(unresolved?{requiresReview:true}:{}) };
     }
@@ -128,6 +129,11 @@ export function discoverProfile(source, css) {
         for(const [index,reason] of assembly.adaptedRules){consumed.set(index,'portrait-dialogue');portraitResults.set(index,{reason});}
         for(const item of assembly.coverage)notes.push(`${item.feature}: ${item.status}. ${item.reason}`);
     }
+    if(source.requiredMacros?.length&&!adapters.some(a=>coveredSourceMacros(source,a.source?.sceneState?.request)||coveredSetupMacros(source,a.source?.sceneState?.setup))&&!assembly?.coverage.some(c=>c.feature==='Startup / prompt macros')){
+        assembly??={coverage:[],adaptedRules:new Map(),adaptedTriggers:new Set()};
+        const item={feature:'Startup / prompt macros',status:'unsupported',reason:'Required greeting/prompt dependencies remain unresolved: '+source.requiredMacros.join(', ')+'. Image or scene recognition does not resolve them.'};
+        assembly.coverage.push(item);notes.push(item.reason);
+    }
     const otherDisplay = rules.filter((rule,index)=>rule.type==='editdisplay' && !consumed.has(index) && rule.out?.trim()).length;
     if (otherDisplay) notes.push(`${otherDisplay} other display rule(s) are outside this profile; image rules remain the image provider's responsibility.`);
     const nonDisplay = rules.filter((rule,index)=>!consumed.has(index)&&rule.type && !['editdisplay','disabled'].includes(rule.type) && (rule.in || rule.out)).length;
@@ -166,4 +172,4 @@ export function profileConflicts(profile, rules) {
     return rules.filter(rule=>rule && !rule.disabled && !rule.promptOnly && typeof rule.findRegex==='string' && !standaloneImage(rule) && markers.some(marker=>rule.findRegex.includes(marker))).map(rule=>String(rule.scriptName ?? rule.id ?? 'Unnamed display rule').slice(0,120));
 }
 
-export function portraitVersion(source) {if(source?.format?.normalization?.displayCleanup!==undefined)return 11;if(source?.sceneState?.version===3||source?.format?.normalization!==undefined)return 10;if(source?.sceneState!==undefined)return source.sceneState.version===2?9:8;if(source?.sceneControls!==undefined)return 7;if(source?.format?.details!==undefined)return 6;if(['appearance','portraitLabels'].some(k=>Object.hasOwn(source??{},k)))return 5;if(source?.format?.kind==='scene-fragments')return 4;if(['imageMappings','metadataLabels','defaults'].some(k=>Object.hasOwn(source??{},k)))return 3;return source?.format?.entries?.some(e=>e.style!==undefined||e.placement!==undefined)?2:1;}
+export function portraitVersion(source) {if(source?.format?.singleImage!==undefined)return 20;if(source?.sceneBehavior?.cleanupOutgoing!==undefined)return 19;if(source?.sceneBehavior!==undefined)return 18;if(source?.speakerColors!==undefined)return 14;if(source?.sceneLayout!==undefined)return 13;if(source?.sceneState?.version===4)return 12;if(source?.format?.normalization?.displayCleanup!==undefined)return 11;if(source?.sceneState?.version===3||source?.format?.normalization!==undefined)return 10;if(source?.sceneState!==undefined)return source.sceneState.version===2?9:8;if(source?.sceneControls!==undefined)return 7;if(source?.format?.details!==undefined)return 6;if(['appearance','portraitLabels'].some(k=>Object.hasOwn(source??{},k)))return 5;if(source?.format?.kind==='scene-fragments')return 4;if(['imageMappings','metadataLabels','defaults'].some(k=>Object.hasOwn(source??{},k)))return 3;return source?.format?.entries?.some(e=>e.style!==undefined||e.placement!==undefined)?2:1;}

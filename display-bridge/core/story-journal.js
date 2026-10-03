@@ -10,6 +10,7 @@ export function createStoryJournal({config,owner,saved,parse=text=>parseStoryUpd
  const signature=JSON.stringify(config),identity=JSON.stringify(owner);
  let data=saved?clone(saved):{version:1,owner:identity,signature,choice:null,records:[]};
  if(data.version!==1||data.owner!==identity||data.signature!==signature||!Array.isArray(data.records)||data.records.length>2048||JSON.stringify(data).length>8000000)fail('saved state belongs to another chat/configuration or exceeds limits; review and rebuild');
+ if(saved&&config.setup&&!data.choice)fail('saved setup is missing; review and rebuild');
  initialStory(config,data.choice);
  if(saved&&config.startup&&!config.startup.choices.some(c=>c.id===data.choice))fail('saved startup choice is missing; review and rebuild');
  const ids=new Set();for(const r of data.records){if(typeof r.id!=='string'||ids.has(r.id)||typeof r.message!=='string'||!Number.isInteger(r.swipe)||typeof r.source!=='string'||r.source.length>200000||!(r.parent===null||ids.has(r.parent)))fail('corrupt saved journal');ids.add(r.id);if(JSON.stringify(parse(r.source))!==JSON.stringify(r.updates))fail('saved updates do not match their source');}
@@ -36,7 +37,7 @@ export function createStoryJournal({config,owner,saved,parse=text=>parseStoryUpd
  }
  return {
   read:messages=>path(messages),accept,
-  rebuild(messages,choice=null){const previous=data;data={version:1,owner:identity,signature,choice,records:[]};try{initialStory(config,choice);for(let i=0;i<messages.length;i++)accept(messages,i);}catch(e){data=previous;throw e;}return path(messages);},
+  rebuild(messages,choice=null){const previous=data;data={version:1,owner:identity,signature,choice:clone(choice),records:[]};try{initialStory(config,choice);for(let i=0;i<messages.length;i++)accept(messages,i);}catch(e){data=previous;throw e;}return path(messages);},
   save:()=>clone(data),
  };
 }

@@ -31,15 +31,23 @@ export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',revie
     const suggestionList=createImageSuggestions(suggestions);host.append(suggestionList);
     const general=createImageMappingEditor({avatar,initial:source.imageMappings,suggestionList,title:'Default image replacements'});host.append(general.host);
     const community=source.format.kind==='community';
+    let paletteRows;
+    if(source.format.kind==='scene-fragments'&&source.format.details&&source.format.textTags){
+        const palette=group('Character colours'),details=node('details'),rows=node('div');details.append(node('summary','Edit speaker palette'),rows);palette.append(details);paletteRows=[];
+        const addColor=(tag='',entry={label:'',color:'#b9d8ff'})=>{if(paletteRows.length>=64)throw Error('At most 64 speaker colours are supported.');const row=node('div'),id=input(row,'Speech tag',tag),label=input(row,'Speaker name',entry.label),color=input(row,'Text colour',entry.color,'color');const value={row,id,label,color};paletteRows.push(value);button('Remove speaker colour',()=>{paletteRows=paletteRows.filter(v=>v!==value);row.remove();},row);rows.append(row);};
+        for(const [tag,entry]of Object.entries(source.speakerColors?.speakers??{}))addColor(tag,entry);
+        button('Add speaker colour',()=>addColor(),details);palette.append(node('p','Use exact text tags. Unmapped speakers keep the usual text colour. Dark colours receive a light halo.'));
+    }
     const appearances=group('Appearance choices'),variantLabel=input(appearances,'Appearance selector label',source.variantLabel),optionList=node('div');
     appearances.append(node('p','Each option changes all of its listed portraits together. Choose the image for each character; the original references stay unchanged. Empty rows use the usual image mapping.'));
     const requiredOutfit=input(appearances,'Always use an outfit (hide As written)',source.appearance?.allowOriginal===false,'checkbox');
     const defaultVariant=input(appearances,'Default appearance','','select');
     appearances.append(node('p','The default is used for new chats, Reset display and selections removed from the profile. Existing valid choices are kept.'));
     const identities=node('details');identities.append(node('summary','Character labels and original references'));appearances.append(identities);
-    const identityInputs=new Map();
+    const identityInputs=new Map(),initialIdentityLabels=new Map();
     for(const reference of [...references].slice(0,200)){
         const row=node('div');row.append(node('p','Original reference: '+reference));identityLabels[reference]=(identityLabels[reference]??reference).slice(0,80);const name=input(row,'Character label for '+reference,identityLabels[reference]);name.maxLength=80;identityInputs.set(reference,name);
+        initialIdentityLabels.set(reference,name.value);
         name.addEventListener('input',()=>{identityLabels[reference]=name.value;for(const r of optionList.children)r.option.mappings.refreshLabels();});identities.append(row);
     }
     appearances.append(optionList);
@@ -84,20 +92,59 @@ export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',revie
     const metadata=group('Metadata labels'),metadataInputs={};
     for(const k of ['time','day','date','location'])metadataInputs[k]=input(metadata,k[0].toUpperCase()+k.slice(1)+' label',source.metadataLabels?.[k]??k);
     metadata.hidden=community;
+    let layoutInputs;
+    if(source.format.kind==='scene-fragments'&&!source.format.details?.layers){
+        const layout=group('Scene frame'),current=source.sceneLayout;
+        layout.append(node('p','Set the image frame proportions and metadata position. On narrow screens, dialogue moves below the frame.'));
+        layoutInputs={enabled:input(layout,'Use a custom scene frame',!!current,'checkbox'),width:input(layout,'Aspect width',current?.aspectRatio[0]??16,'number'),height:input(layout,'Aspect height',current?.aspectRatio[1]??9,'number'),maxWidth:input(layout,'Maximum frame width (px)',current?.maxWidth??1200,'number'),position:input(layout,'Scene metadata position','','select')};
+        for(const [value,label]of [['top','Top bar'],['below','Below scene']]){const option=node('option',label);option.value=value;layoutInputs.position.append(option);}
+        layoutInputs.position.value=current?.metadataPosition??'top';
+        for(const key of ['width','height']){layoutInputs[key].min=1;layoutInputs[key].max=100;layoutInputs[key].step='any';}
+        layoutInputs.maxWidth.min=320;layoutInputs.maxWidth.max=2400;
+        const refreshLayout=()=>{for(const [key,control]of Object.entries(layoutInputs))if(key!=='enabled')control.disabled=!layoutInputs.enabled.checked;};
+        layoutInputs.enabled.addEventListener('change',refreshLayout);refreshLayout();
+    }
+    let singleInputs;
+    if(source.format.kind==='scene-fragments'&&source.format.castFields===4&&source.format.counts.includes(1)){
+        const groupEl=group('Single-image portrait layout'),current=source.format.singleImage;
+        groupEl.append(node('p','For a one-character scene, a matching image name uses the second image field as a vertical offset instead of a hover image. It fits inside the selected percentage of the scene and is clipped at the frame. No click action is added.'));
+        singleInputs={enabled:input(groupEl,'Enable single-image offset layout',!!current,'checkbox'),marker:input(groupEl,'Single-image filename marker',current?.marker??'_ev_lying_'),suffix:input(groupEl,'Single-image filename suffix',current?.suffix??'.png'),width:input(groupEl,'Single-image width (%)',current?.width??74,'number'),height:input(groupEl,'Single-image height (%)',current?.height??74,'number')};
+        for(const key of ['width','height']){singleInputs[key].min=1;singleInputs[key].max=100;singleInputs[key].step='any';}
+        const refresh=()=>{for(const [key,control]of Object.entries(singleInputs))if(key!=='enabled')control.disabled=!singleInputs.enabled.checked;};singleInputs.enabled.addEventListener('change',refresh);refresh();
+    }
+    let behaviorInputs;
+    if(source.format.kind==='scene-fragments'){
+        const behavior=group('Scene history and motion'),current=source.sceneBehavior;
+        behavior.append(node('p','History depth counts every message after a scene. Older scenes keep their dialogue. Leave blank to keep artwork throughout the chat. Motion pauses off-screen and respects reduced-motion preferences.'));
+        behaviorInputs={depth:input(behavior,'Maximum scene message depth',current?.maxMessageDepth??'','number')};
+        behaviorInputs.cleanup=input(behavior,'Clean older scenes in outgoing prompts',current?.cleanupOutgoing??false,'checkbox');
+        behavior.append(node('p','Outgoing cleanup removes recognized scene markup and image references beyond the same depth. It keeps dialogue, speaker labels and explicit time/location fields. Saved chat is unchanged. Unrecognized scenes stay intact.'));
+        behaviorInputs.depth.min=0;behaviorInputs.depth.max=100;behaviorInputs.depth.step=1;
+        for(const [key,label]of [['cloudFade','Cloud fading'],['portraitBreathing','Portrait breathing'],['portraitEntrance','Portrait entrance']])behaviorInputs[key]=input(behavior,label,current?.[key]??false,'checkbox');
+    }
     const visibility=group('Initial display choices'),defaults={};visibility.append(node('p','Used for new chat preferences and Reset display. Existing saved choices are retained.'));
     for(const [key,label]of [['visual','Start with visual layout'],['image','Show portraits initially'],['dialogue','Show dialogue initially'],['console','Show scene settings initially']])defaults[key]=input(visibility,label,source.defaults?.[key]??true,'checkbox');visibility.hidden=community;
     const themeGroup=group('Global palette'),themeInputs={};themeGroup.append(node('p','Speakers with imported style tokens retain their own palettes.'));for(const k of ['accent','background','text'])themeInputs[k]=input(themeGroup,k[0].toUpperCase()+k.slice(1)+' colour',source.theme[k],'color');themeGroup.hidden=community;
     const sampleInput=input(host,'Sample message',message,'textarea');
     const allowMissing=input(host,'Allow unresolved replacement images when staging',false,'checkbox');
-    const preview=node('div');preview.className='db-editor-preview';
+    const preview=node('div');preview.className='db-editor-preview';let previewWidgets=[];
+    const disposePreview=()=>{for(const widget of previewWidgets)widget.dispose?.();previewWidgets=[];};
     function config(){
         const next=JSON.parse(JSON.stringify(source)),mappings=general.read();
+        if(singleInputs){if(singleInputs.enabled.checked)next.format.singleImage={version:1,marker:singleInputs.marker.value.trim(),suffix:singleInputs.suffix.value.trim(),width:Number(singleInputs.width.value),height:Number(singleInputs.height.value)};else delete next.format.singleImage;}
+        if(paletteRows){if(paletteRows.length){const speakers=Object.create(null);for(const v of paletteRows){const id=v.id.value.trim();if(Object.hasOwn(speakers,id))throw Error('Speech tags must be unique.');speakers[id]={label:v.label.value.trim(),color:v.color.value};}next.speakerColors={version:1,speakers,narrationTags:source.speakerColors?.narrationTags??['narration','log','plain']};}else delete next.speakerColors;}
+        if(behaviorInputs){
+            const depth=behaviorInputs.depth.value.trim(),motion=Object.fromEntries(['cloudFade','portraitBreathing','portraitEntrance'].map(k=>[k,behaviorInputs[k].checked]));
+            if(source.sceneBehavior||depth||behaviorInputs.cleanup.checked||Object.values(motion).some(Boolean))next.sceneBehavior={version:1,...(depth!==''?{maxMessageDepth:Number(depth)}:{}),...motion,...(source.sceneBehavior?.cleanupOutgoing!==undefined||behaviorInputs.cleanup.checked?{cleanupOutgoing:behaviorInputs.cleanup.checked}:{})};
+            else delete next.sceneBehavior;
+        }
+        if(layoutInputs){if(layoutInputs.enabled.checked)next.sceneLayout={version:1,aspectRatio:[Number(layoutInputs.width.value),Number(layoutInputs.height.value)],maxWidth:Number(layoutInputs.maxWidth.value),metadataPosition:layoutInputs.position.value};else delete next.sceneLayout;}
         if(Object.keys(mappings).length||source.imageMappings!==undefined)next.imageMappings=mappings;
         if(!community){
             next.theme={...source.theme,...Object.fromEntries(Object.entries(themeInputs).map(([k,n])=>[k,n.value]))};
             next.variantLabel=variantLabel.value.trim();const labels=new Set();next.variants=[...optionList.children].map(row=>{const v=row.option,label=v.label.value.trim();if(!label||labels.has(label))throw Error('Each appearance option needs a distinct, nonempty label.');labels.add(label);return {id:v.id,label,images:v.mappings.read()};});
             if(source.appearance!==undefined||requiredOutfit.checked||defaultVariant.value!=='original')next.appearance={allowOriginal:!requiredOutfit.checked,defaultVariant:defaultVariant.value};
-            const portraitLabels=Object.assign(Object.create(null),source.portraitLabels);for(const [reference,n] of identityInputs){const value=n.value.trim();if(!value)throw Error('Character labels cannot be empty.');if(value!==reference||Object.hasOwn(portraitLabels,reference))portraitLabels[reference]=value;}
+            const portraitLabels=Object.assign(Object.create(null),source.portraitLabels);for(const [reference,n] of identityInputs){const value=n.value.trim();if(!value)throw Error('Character labels cannot be empty.');if(value!==initialIdentityLabels.get(reference)||Object.hasOwn(portraitLabels,reference))portraitLabels[reference]=value;}
             if(Object.keys(portraitLabels).length)next.portraitLabels=portraitLabels;
             const metadataValues=Object.fromEntries(Object.entries(metadataInputs).map(([k,n])=>[k,n.value.trim()]));if(source.metadataLabels!==undefined||Object.entries(metadataValues).some(([k,v])=>v!==k))next.metadataLabels=metadataValues;
             const values=Object.fromEntries(Object.entries(defaults).map(([k,n])=>[k,n.checked]));if(source.defaults!==undefined||Object.values(values).includes(false))next.defaults=values;
@@ -109,11 +156,11 @@ export function createPresetEditor({source=DEFAULT_PRESET,avatar,sample='',revie
     const unresolved=()=>[...new Set([...general.unresolved(),...(!community?[...optionList.children].flatMap(row=>row.option.mappings.unresolved()):[])])];
     const controls=node('div');controls.className='db-editor-controls';host.append(controls);
     button('Preview mapped message',()=>{
-        const c=config(),parsed=parsePortraitDialogue(sampleInput.value,c),state=createActionStore().bind(portraitActions(c),'mapping-preview');let widgets=[];const shared={read:()=>state.read(),dispatch(action){const changed=state.dispatch(action);for(const w of widgets)w.refresh();return changed;}};widgets=parsed.blocks.map(b=>createPortraitDialogue(b,{avatar,presetState:shared}));preview.replaceChildren(...widgets.map(w=>w.host));
+        const c=config(),parsed=parsePortraitDialogue(sampleInput.value,c),state=createActionStore().bind(portraitActions(c),'mapping-preview');disposePreview();const shared={read:()=>state.read(),dispatch(action){const changed=state.dispatch(action);for(const w of previewWidgets)w.refresh();return changed;}};previewWidgets=parsed.blocks.map(b=>createPortraitDialogue(b,{avatar,presetState:shared}));preview.replaceChildren(...previewWidgets.map(w=>w.host));
         const missing=unresolved();status.textContent=`${parsed.blocks.length} matching panel(s); ${parsed.incomplete} incomplete and ${parsed.unsupported} unsupported blocks. ${missing.length} unresolved replacement image(s). Unmatched text stays in ordinary chat.`;
     },controls);
     button('Review preset for this character',()=>{const c=config(),missing=unresolved();if(missing.length&&!allowMissing.checked)throw Error('Resolve these replacement images or explicitly allow unresolved mappings: '+missing.slice(0,8).join(', '));review(c);status.textContent='Preset staged. Use Apply imported UI profile to apply it. '+(missing.length?`${missing.length} unresolved replacement image(s) retained.`:'');},controls);
-    button('Close setup',close,controls);
+    button('Close setup',()=>{disposePreview();close();},controls);
     const advanced=node('details');advanced.append(node('summary','Advanced preset JSON'),node('p','Paste only the source object (format, variants, theme and other preset settings), not a whole profile or a variants array. The form and JSON are separate drafts.'));const json=input(advanced,'Draft preset JSON',JSON.stringify(source,null,2),'textarea');button('Copy form draft to JSON',()=>{json.value=JSON.stringify(config(),null,2);},advanced);button('Review advanced JSON',()=>{const c=validatePortraitPreset(JSON.parse(json.value));const targets=[...Object.values(c.imageMappings??{}),...c.variants.flatMap(v=>Object.values(v.images))];const missing=targets.filter(t=>resolveImage(avatar,t).status!=='resolved');if(missing.length&&!allowMissing.checked)throw Error('Advanced draft has unresolved replacements. Resolve them or explicitly allow unresolved mappings.');review(c);status.textContent='Advanced preset staged for review. The form has not been changed.';},advanced);host.append(status,preview,advanced);
     return host;
 }

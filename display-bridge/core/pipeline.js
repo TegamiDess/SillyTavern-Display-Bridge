@@ -43,9 +43,11 @@ export function makePlan(source, { stream = true, gallery = false, witchcure = n
         }
     }
     const vn=portrait?parsePortraitDialogue(source,portrait,blocks.map(x=>[x.start,x.end]),depth):{blocks:[],incomplete:0,unsupported:0};
+    // Replanning on a new turn must not replay entrances on earlier messages.
+    for(const item of vn.blocks)item.animateEntrance=latestAssistant&&depth===0;
     if(['tagged','scene-fragments'].includes(portrait?.format.kind)){
         for(const item of vn.blocks)item.controls=false;
-        const visible=vn.blocks.filter(item=>!item.suppressed);
+        const visible=vn.blocks.filter(item=>!item.suppressed&&!item.historyTextOnly);
         if(latestAssistant&&!portrait.format.details?.layers&&visible.some(item=>item.presentation!=='narration')){
             let controller=visible.findLast(item=>item.presentation==='metadata');
             if(!controller){controller={type:'portrait-dialogue',presentation:'metadata',speaker:'',dialogue:'',portrait:'',config:portrait,start:source.length,end:source.length};vn.blocks.push(controller);}

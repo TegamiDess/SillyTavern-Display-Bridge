@@ -1,4 +1,5 @@
-import {createStoryJournal,STORY_KEY} from '../core/story-journal.js';
+import {setupNativeValues,verifySetupBindings,commitSetupBindings,setupGreeting,sameSetupText} from '../adapters/scene-setup.js';
+import {createStoryJournal,STORY_KEY,MESSAGE_KEY} from '../core/story-journal.js';
 import {parseStoryUpdates,applyStory,initialStory,storySnapshot,storyContext} from '../adapters/scene-state.js';
 import {parsePortraitDialogue} from '../adapters/portrait-dialogue.js';
 import {projectSourceRequest} from '../adapters/scene-source-context.js';
@@ -7,7 +8,7 @@ import {sceneScoreCaptionRanges} from '../adapters/scene-fragments.js';
 // Host mutations happen only at explicit initialization or accepted message events.
 // Render reads the cached projection; it never commits an update.
 export function createStoryState({getContext,scope,changed=()=>{}}){
- let cache=null,attempt=null,busy=false,serial=Promise.resolve();
+ let cache=null,attempt=null,busy=false,saving=false,serial=Promise.resolve();
  const contextKey='display_bridge_scene_state';
  const warnedEntities=new Set();let warningScope=null;
  function reportIgnored(text,p){
@@ -41,19 +42,44 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
  }
  async function persist(p,j){
   if(getContext().chat!==p.ctx.chat)throw Error('Chat changed before state save');
-  const old=p.ctx.chatMetadata[STORY_KEY];p.ctx.chatMetadata[STORY_KEY]=j.save();
+  const saved=j.save(),old=p.ctx.chatMetadata[STORY_KEY];
+  const undoBindings=p.state.setup?commitSetupBindings(p.ctx.chatMetadata,setupNativeValues(initialStory(p.state,saved.choice),p.state.setup),JSON.stringify(p.owner)):()=>{};
+  p.ctx.chatMetadata[STORY_KEY]=saved;
+  saving=true;
   try{if(typeof p.ctx.saveChat!=='function')throw Error('This host cannot save scene state');await p.ctx.saveChat();}
-  catch(e){if(old===undefined)delete p.ctx.chatMetadata[STORY_KEY];else p.ctx.chatMetadata[STORY_KEY]=old;throw e;}
-  finally{invalidate();}
+  catch(e){undoBindings();if(old===undefined)delete p.ctx.chatMetadata[STORY_KEY];else p.ctx.chatMetadata[STORY_KEY]=old;throw e;}
+  finally{saving=false;invalidate();}
  }
  function enqueue(fn){const next=serial.then(fn);serial=next.catch(()=>{});return next;}
- function rebuild(choice=null){return enqueue(async()=>{
+ function rebuild(choice=null,{start=false}={}){
+  const requested=parameters(),requestedChat=requested?.ctx.chat,selection=choice===null?null:structuredClone(choice);
+  return enqueue(async()=>{
   const p=parameters();if(!p)throw Error('Enable a scene-state profile in a saved single-character chat first.');
+  if(!requested||requestedChat!==p.ctx.chat||requested.config!==p.config||JSON.stringify(requested.owner)!==JSON.stringify(p.owner))throw Error('Chat or profile changed before setup save.');
+  choice=selection;
   if(busy)throw Error('Finish or stop generation before rebuilding state.');
-  const oldText=p.ctx.chat[0]?.mes,c=p.state.startup?.choices.find(c=>c.id===choice);let replace=false;
+  if(p.state.setup){const saved=p.ctx.chatMetadata[STORY_KEY]?.choice;choice=choice??saved;if(!choice)throw Error('Choose the setup values first.');if(p.ctx.chat.length!==1&&(!saved||p.state.setup.fields.some(f=>choice[f.key]!==saved[f.key])))throw Error('Changing setup requires a fresh chat.');initialStory(p.state,choice);}
+  const first=p.ctx.chat[0],oldText=first?.mes,c=p.state.startup?.choices.find(c=>c.id===choice),screen=p.state.setup?.screen;
+  let replace=false,nextText;
+  if(start&&!screen)throw Error('This profile has no startup screen.');
+  if(screen){
+   const saved=p.ctx.chatMetadata[STORY_KEY]?.choice,changed=!saved||p.state.setup.fields.some(f=>saved[f.key]!==choice[f.key]);
+   const fresh=p.ctx.chat.length===1&&first&&!first.is_user&&!first.is_system&&!first.extra?.display_text;
+   if(start&&(!fresh||!sameSetupText(oldText,screen.marker)))throw Error('Start requires a fresh chat containing its exact menu marker.');
+   if(!saved||changed||start){
+    if(!fresh||(!sameSetupText(oldText,screen.marker)&&(!saved||!sameSetupText(oldText,setupGreeting(initialStory(p.state,saved),p.state.setup)))))throw Error('Setup can only replace its unchanged greeting in a fresh chat.');
+    nextText=setupGreeting(initialStory(p.state,choice),p.state.setup);replace=true;
+   }
+  }
+  const oldSwipes=first?.swipes?first.swipes.slice():null;
   if(p.state.startup){if(!c)throw Error('Choose a starting branch');replace=p.ctx.chat.length===1&&!p.ctx.chat[0].is_user&&oldText===p.state.startup.marker;if(!replace&&p.ctx.chatMetadata[STORY_KEY]?.choice!==choice)throw Error('A startup choice requires a fresh chat containing its exact marker.');if(replace){p.ctx.chat[0].mes=c.text;if(Array.isArray(p.ctx.chat[0].swipes))p.ctx.chat[0].swipes[p.ctx.chat[0].swipe_id??0]=c.text;}}
-  try{const j=journal(p,null);j.rebuild(p.ctx.chat,choice);const accepted=p.ctx.chat.filter(m=>!m.is_user&&!m.is_system).map(m=>m.mes);await persist(p,j);for(const text of accepted)reportIgnored(text,p);if(replace)await p.ctx.reloadCurrentChat?.();return read();}
-  catch(e){if(replace){p.ctx.chat[0].mes=oldText;if(Array.isArray(p.ctx.chat[0].swipes))p.ctx.chat[0].swipes[p.ctx.chat[0].swipe_id??0]=oldText;}throw e;}
+  if(screen&&replace){first.mes=nextText;if(Array.isArray(first.swipes)){const slot=first.swipe_id??0;if(!Number.isInteger(slot)||slot<0||slot>=first.swipes.length){first.mes=oldText;throw Error('Finish the pending greeting swipe before setup.');}first.swipes[slot]=nextText;}}
+  const messageIds=p.ctx.chat.map(m=>[m,m[MESSAGE_KEY]]);
+  try{const j=journal(p,null);j.rebuild(p.ctx.chat,choice);const accepted=p.ctx.chat.filter(m=>!m.is_user&&!m.is_system).map(m=>m.mes);await persist(p,j);for(const text of accepted)reportIgnored(text,p);}
+  catch(e){for(const [m,id] of messageIds){if(id===undefined)delete m[MESSAGE_KEY];else m[MESSAGE_KEY]=id;}if(replace){first.mes=oldText;if(oldSwipes)first.swipes=oldSwipes;invalidate();}throw e;}
+  // A redraw failure must not undo a greeting already saved to disk.
+  if(replace&&getContext().chat===p.ctx.chat)await p.ctx.reloadCurrentChat?.();
+  return read();
  });}
  function received(index,type){if(type==='first_message'){invalidate();return Promise.resolve();}const eventScope=parameters(),eventAttempt=attempt;return enqueue(async()=>{
   const p=parameters();if(!p||p.ctx.chat!==eventScope?.ctx.chat||attempt!==eventAttempt)return;
@@ -64,6 +90,7 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
  });}
  function begin(type,_options,dryRun){
   if(dryRun)return;const p=parameters();if(!p)return;
+  if(saving)throw Error('Wait for scene setup to finish saving.');
   if(p.ctx.onlineStatus==='no_connection')return;
   invalidate();const r=read(),replacing=['swipe','regenerate','continue'].includes(type),last=p.ctx.chat.at(-1);
   if(r?.issue&&!(replacing&&r.index===p.ctx.chat.length-1))throw Error(r.issue);
@@ -83,16 +110,16 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
   }
   return plan;
  }
- function context(){const p=parameters(),r=read();if(!p)return '';if(busy&&attempt?.chat===p.ctx.chat&&attempt.config===p.config)return storyContext(attempt.requestValues,p.state);if(r.issue)throw Error(r.issue);return storyContext(r.values,p.state);}
+ function context(){const p=parameters(),r=read();if(!p)return '';if(saving)throw Error('Wait for scene setup to finish saving.');if(p.state.setup){if(r.issue)throw Error(r.issue);verifySetupBindings(p.ctx.chatMetadata,setupNativeValues(r.values,p.state.setup),JSON.stringify(p.owner));}if(busy&&attempt?.chat===p.ctx.chat&&attempt.config===p.config)return storyContext(attempt.requestValues,p.state);if(r.issue)throw Error(r.issue);return storyContext(r.values,p.state);}
  function prepare(_type,_options,dryRun){
   const ctx=getContext(),p=parameters();
-  try{ctx.setExtensionPrompt?.(contextKey,p?context():'',1,0,false,0);}
+  try{const text=p?context():'';ctx.setExtensionPrompt?.(contextKey,p?.state.request?'':text,1,0,false,0);}
   catch(e){ctx.setExtensionPrompt?.(contextKey,'',1,0,false,0);if(!dryRun){cancel();ctx.stopGeneration?.();throw e;}}
  }
  function intercept(messages,_size,abort){
-  const p=parameters();if(!p?.state.request)return;
-  try{context();if(messages===p.ctx.chat)throw Error('The host supplied live history instead of a request copy');const projected=projectSourceRequest(messages,p.state.request);messages.splice(0,messages.length,...projected);}
+  const p=parameters();if(!p||(!p.state.request&&!p.state.setup))return;
+  try{const text=context();if(!p.state.request)return;p.ctx.setExtensionPrompt?.(contextKey,'',1,0,false,0);if(messages===p.ctx.chat)throw Error('The host supplied live history instead of a request copy');const projected=projectSourceRequest(messages,p.state.request,text);messages.splice(0,messages.length,...projected);}
   catch(e){abort?.(true);cancel();throw e;}
  }
- return {read,project,rebuild,received,begin,cancel,end,switched,invalidate,prepare,context,intercept,stop:switched};
+ return {read,project,rebuild,startSetup:choice=>rebuild(choice,{start:true}),received,begin,cancel,end,switched,invalidate,prepare,context,intercept,stop:switched};
 }

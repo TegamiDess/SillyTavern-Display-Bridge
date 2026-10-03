@@ -190,7 +190,13 @@
                   8,
                   9,
                   10,
-                  11
+                  11,
+                  12,
+                  13,
+                  14,
+                  18,
+                  19,
+                  20
                 ]
               },
               "source": {
@@ -669,8 +675,67 @@
                                 }
                               }
                             }
+                          },
+                          "singleImage": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "version",
+                              "marker",
+                              "suffix",
+                              "width",
+                              "height"
+                            ],
+                            "properties": {
+                              "version": {
+                                "const": 1
+                              },
+                              "marker": {
+                                "type": "string",
+                                "pattern": "^_[A-Za-z0-9_-]{1,60}_$"
+                              },
+                              "suffix": {
+                                "enum": [
+                                  ".png",
+                                  ".webp",
+                                  ".jpg",
+                                  ".jpeg"
+                                ]
+                              },
+                              "width": {
+                                "type": "number",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "height": {
+                                "type": "number",
+                                "minimum": 1,
+                                "maximum": 100
+                              }
+                            }
                           }
-                        }
+                        },
+                        "allOf": [
+                          {
+                            "if": {
+                              "required": [
+                                "singleImage"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "castFields": {
+                                  "const": 4
+                                },
+                                "counts": {
+                                  "contains": {
+                                    "const": 1
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
                       }
                     ]
                   },
@@ -1042,7 +1107,8 @@
                         "enum": [
                           1,
                           2,
-                          3
+                          3,
+                          4
                         ]
                       },
                       "variables": {
@@ -1081,6 +1147,11 @@
                                 "maxLength": 256
                               },
                               "maxItems": 64
+                            },
+                            "maxLength": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 4096
                             }
                           },
                           "required": [
@@ -1387,6 +1458,115 @@
                             "maxLength": 12000
                           }
                         }
+                      },
+                      "setup": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "version": {
+                            "const": 1
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "fields": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 32,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z][\\w-]{0,59}$"
+                                },
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 80
+                                },
+                                "required": {
+                                  "type": "boolean"
+                                },
+                                "unset": {
+                                  "type": "array",
+                                  "maxItems": 8,
+                                  "items": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "maxLength": 256
+                                  }
+                                },
+                                "reset": {
+                                  "type": "boolean"
+                                },
+                                "native": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "label",
+                                "required",
+                                "unset",
+                                "reset",
+                                "native"
+                              ]
+                            }
+                          },
+                          "unique": {
+                            "type": "array",
+                            "maxItems": 8,
+                            "items": {
+                              "type": "array",
+                              "minItems": 2,
+                              "maxItems": 8,
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z][\\w-]{0,59}$"
+                              }
+                            }
+                          },
+                          "context": {
+                            "$ref": "#/$defs/setupTemplate"
+                          },
+                          "screen": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "marker": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4096
+                              },
+                              "description": {
+                                "type": "string",
+                                "maxLength": 512
+                              },
+                              "greeting": {
+                                "$ref": "#/$defs/setupTemplate",
+                                "minItems": 1
+                              }
+                            },
+                            "required": [
+                              "marker",
+                              "description",
+                              "greeting"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "version",
+                          "title",
+                          "fields",
+                          "unique"
+                        ]
                       }
                     },
                     "required": [
@@ -1460,10 +1640,283 @@
                             ]
                           }
                         }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "version": {
+                              "maximum": 3
+                            }
+                          }
+                        },
+                        "then": {
+                          "not": {
+                            "required": [
+                              "setup"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "required": [
+                            "setup"
+                          ]
+                        },
+                        "then": {
+                          "not": {
+                            "anyOf": [
+                              {
+                                "required": [
+                                  "startup"
+                                ]
+                              },
+                              {
+                                "required": [
+                                  "request"
+                                ]
+                              },
+                              {
+                                "required": [
+                                  "context"
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "sceneLayout": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "version": {
+                        "const": 1
+                      },
+                      "aspectRatio": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 100
+                          },
+                          {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 100
+                          }
+                        ],
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "Runtime validation also enforces width/height between 0.5 and 4."
+                      },
+                      "maxWidth": {
+                        "type": "integer",
+                        "minimum": 320,
+                        "maximum": 2400
+                      },
+                      "metadataPosition": {
+                        "enum": [
+                          "top",
+                          "below"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "aspectRatio",
+                      "maxWidth",
+                      "metadataPosition"
+                    ]
+                  },
+                  "speakerColors": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "version",
+                      "speakers",
+                      "narrationTags"
+                    ],
+                    "properties": {
+                      "version": {
+                        "const": 1
+                      },
+                      "speakers": {
+                        "type": "object",
+                        "maxProperties": 64,
+                        "propertyNames": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80,
+                          "pattern": "^[^<>\"\\r\\n]+$",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "prototype",
+                              "constructor"
+                            ]
+                          }
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "label",
+                            "color"
+                          ],
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 80
+                            },
+                            "color": {
+                              "type": "string",
+                              "pattern": "^#[0-9a-fA-F]{6}$"
+                            }
+                          }
+                        }
+                      },
+                      "narrationTags": {
+                        "type": "array",
+                        "maxItems": 16,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80,
+                          "pattern": "^[^<>\"\\r\\n]+$",
+                          "not": {
+                            "enum": [
+                              "__proto__",
+                              "prototype",
+                              "constructor"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "sceneBehavior": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "version"
+                    ],
+                    "properties": {
+                      "version": {
+                        "const": 1
+                      },
+                      "maxMessageDepth": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "cloudFade": {
+                        "type": "boolean"
+                      },
+                      "portraitBreathing": {
+                        "type": "boolean"
+                      },
+                      "portraitEntrance": {
+                        "type": "boolean"
+                      },
+                      "cleanupOutgoing": {
+                        "type": "boolean"
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "cleanupOutgoing": {
+                              "const": true
+                            }
+                          },
+                          "required": [
+                            "cleanupOutgoing"
+                          ]
+                        },
+                        "then": {
+                          "required": [
+                            "maxMessageDepth"
+                          ]
+                        }
                       }
                     ]
                   }
-                }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "required": [
+                        "sceneLayout"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "format": {
+                          "properties": {
+                            "kind": {
+                              "const": "scene-fragments"
+                            },
+                            "details": {
+                              "properties": {
+                                "layers": {
+                                  "const": false
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "speakerColors"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "format": {
+                          "required": [
+                            "details"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "scene-fragments"
+                            },
+                            "textTags": {
+                              "const": true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "sceneBehavior"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "format": {
+                          "properties": {
+                            "kind": {
+                              "const": "scene-fragments"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             },
             "allOf": [
@@ -1753,6 +2206,186 @@
                     }
                   }
                 }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "version": {
+                      "maximum": 12
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "not": {
+                        "required": [
+                          "sceneLayout"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "version": {
+                      "maximum": 11
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "properties": {
+                        "sceneState": {
+                          "properties": {
+                            "version": {
+                              "maximum": 3
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "version": {
+                      "maximum": 13
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "not": {
+                        "required": [
+                          "speakerColors"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "version": {
+                      "enum": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "not": {
+                        "required": [
+                          "sceneBehavior"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "version": {
+                      "enum": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        18
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "properties": {
+                        "sceneBehavior": {
+                          "not": {
+                            "required": [
+                              "cleanupOutgoing"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "version": {
+                      "enum": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        18,
+                        19
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "source": {
+                      "properties": {
+                        "format": {
+                          "not": {
+                            "required": [
+                              "singleImage"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             ]
           }
@@ -1861,6 +2494,74 @@
             "gingham"
           ]
         }
+      }
+    },
+    "setupTemplate": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 12000
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "read": {
+                "type": "string",
+                "pattern": "^[A-Za-z][\\w-]{0,59}$"
+              }
+            },
+            "required": [
+              "read"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "when": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][\\w-]{0,59}$"
+                    },
+                    "equals": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "equals"
+                  ]
+                }
+              },
+              "then": {
+                "$ref": "#/$defs/setupTemplate"
+              },
+              "else": {
+                "$ref": "#/$defs/setupTemplate"
+              }
+            },
+            "required": [
+              "when",
+              "then",
+              "else"
+            ]
+          }
+        ]
       }
     }
   }

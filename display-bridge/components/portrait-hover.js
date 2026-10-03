@@ -1,6 +1,6 @@
 // Keep the base image as the stable hit surface, including while its alternate
 // is visible. Sample a bounded alpha mask once per source, never per movement.
-export function bindPortraitHover(button, image) {
+export function bindPortraitHover(button, image, { onPreview } = {}) {
     let cachedSource = null, mask = null, point = null;
     function readMask() {
         const source = image.currentSrc || image.src;
@@ -23,7 +23,13 @@ export function bindPortraitHover(button, image) {
         return mask;
     }
     function update() {
-        const bounds = image.getBoundingClientRect();
+        const box = image.getBoundingClientRect();
+        // `contain` can leave blank margins in a fixed-size image box. Hit-test
+        // only the fitted bitmap, not those margins, for wide event portraits.
+        const fit=getComputedStyle(image).objectFit,ratio=image.naturalWidth/image.naturalHeight;
+        const width=fit==='contain'&&ratio?Math.min(box.width,box.height*ratio):box.width;
+        const height=fit==='contain'&&ratio?Math.min(box.height,box.width/ratio):box.height;
+        const bounds={left:box.left+(box.width-width)/2,top:box.top+(box.height-height)/2,width,height};
         let hit = false;
         if (point && !image.hidden && bounds.width && bounds.height) {
             const x = (point.x - bounds.left) / bounds.width, y = (point.y - bounds.top) / bounds.height;
@@ -32,6 +38,7 @@ export function bindPortraitHover(button, image) {
                 if (alpha) hit = alpha.pixels[Math.floor(y * alpha.height) * alpha.width + Math.floor(x * alpha.width)] >= 24;
             }
         }
+        if (hit) onPreview?.(bounds);
         button.classList.toggle('portrait-hover', hit);
     }
     function move(event) {

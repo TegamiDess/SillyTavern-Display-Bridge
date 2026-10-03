@@ -1,4 +1,5 @@
 // Reviewed, declarative state. No imported regular expressions or scripts run.
+import {validateSetup,checkSetup,setupContext} from './scene-setup.js';
 import {codeRanges} from '../core/parser.js';
 import {validateSourceRequest,sourceRequestText} from './scene-source-context.js';
 const fail=m=>{throw Error('Scene state: '+m);};
@@ -12,17 +13,18 @@ export function stateValue(value,definition){
  if(value===null)return null;
  if(definition.type==='number'&&Number.isFinite(value)&&value>=definition.min&&value<=definition.max)return value;
  if(definition.type==='boolean'&&typeof value==='boolean')return value;
- if(definition.type==='string'&&text(value))return value;
+ if(definition.type==='string'&&(definition.maxLength!==undefined?typeof value==='string'&&value.length<=definition.maxLength&&!/[{}\x00-\x08\x0b-\x1f]/.test(value):text(value)))return value;
  if(definition.type==='enum'&&definition.values.includes(value))return value;
  fail('invalid value for declared variable');
 }
 export function validateSceneState(s,controls){
- shape(s,['version','variables','rules','derive','roster','track','backgroundTracks','context','startup',...(s.version>=2?['literals','strictPrefixes']:[]),...(s.version===3?['request']:[])]);
- if(![1,2,3].includes(s.version)||!object(s.variables)||!Object.keys(s.variables).length||Object.keys(s.variables).length>256)fail('invalid variable registry');
+ shape(s,['version','variables','rules','derive','roster','track','backgroundTracks','context','startup',...(s.version>=2?['literals','strictPrefixes']:[]),...(s.version>=3?['request']:[]),...(s.version===4?['setup']:[])]);
+ if(![1,2,3,4].includes(s.version)||!object(s.variables)||!Object.keys(s.variables).length||Object.keys(s.variables).length>256)fail('invalid variable registry');
  const declared=k=>{if(!key(k)||!Object.hasOwn(s.variables,k))fail('unknown variable');return s.variables[k];};
  if(s.strictPrefixes!==undefined&&(!Array.isArray(s.strictPrefixes)||s.strictPrefixes.length>32||s.strictPrefixes.some(p=>!text(p,80)||p.length<2)))fail('invalid annotation prefixes');
  for(const [name,v]of Object.entries(s.variables)){
-  if(!key(name))fail('invalid variable name');shape(v,['type','initial','min','max','values']);
+  if(!key(name))fail('invalid variable name');shape(v,['type','initial','min','max','values',...(s.version===4?['maxLength']:[])]);
+  if(v.maxLength!==undefined&&(v.type!=='string'||!Number.isInteger(v.maxLength)||v.maxLength<1||v.maxLength>4096))fail('invalid string bound');
   if(!['number','string','boolean','enum'].includes(v.type))fail('invalid type');
   if(v.type==='number'&&(!Number.isFinite(v.min)||!Number.isFinite(v.max)||v.min>v.max||Math.max(Math.abs(v.min),Math.abs(v.max))>1000000))fail('invalid numeric bounds');
   if(v.type==='enum'&&(!Array.isArray(v.values)||!v.values.length||v.values.length>64||v.values.some(x=>!text(x))||new Set(v.values).size!==v.values.length))fail('invalid enum');
@@ -50,10 +52,11 @@ export function validateSceneState(s,controls){
  if(s.backgroundTracks!==undefined){if(!s.track||!object(s.backgroundTracks)||Object.keys(s.backgroundTracks).length>128||Object.entries(s.backgroundTracks).some(([name,id])=>!text(name)||['__proto__','constructor','prototype'].includes(name)||!track(id)))fail('invalid background track map');}
  if(s.context!==undefined){shape(s.context,['title','fields']);if(!text(s.context.title,80)||!Array.isArray(s.context.fields)||s.context.fields.length>128)fail('invalid context');for(const f of s.context.fields){shape(f,['key','label']);declared(f.key);if(!text(f.label,80))fail('invalid context label');}}
  if(s.startup!==undefined){shape(s.startup,['marker','choices']);if(!text(s.startup.marker,80)||!Array.isArray(s.startup.choices)||!s.startup.choices.length||s.startup.choices.length>16)fail('invalid startup choices');const ids=new Set();for(const c of s.startup.choices){shape(c,['id','label','text','values']);if(!key(c.id)||ids.has(c.id)||!text(c.label,80)||typeof c.text!=='string'||!c.text.trim()||c.text.length>30000||/\{\{|<scene-start/.test(c.text)||!object(c.values))fail('invalid startup branch');ids.add(c.id);for(const [k,v]of Object.entries(c.values))stateValue(v,declared(k));}}
+ if(s.setup!==undefined){if(s.startup||s.request||s.context)fail('setup cannot combine with legacy startup/request/context');validateSetup(s.setup,s.variables);for(const f of s.setup.fields)if(s.rules.some(r=>Object.values(r.targets).includes(f.key))||s.literals?.some(l=>l.key===f.key)||s.derive?.some(d=>d.to===f.key))fail('setup fields cannot be written by story output');}
  if(s.request!==undefined)validateSourceRequest(s.request,s.variables);
  return clone(s);
 }
-export function initialStory(s,choice){const values=Object.fromEntries(Object.entries(s.variables).map(([k,v])=>[k,v.initial]));if(choice){const c=s.startup?.choices.find(c=>c.id===choice);if(!c)fail('unknown startup choice');Object.assign(values,c.values);}return deriveStory(values,s);}
+export function initialStory(s,choice){const values=Object.fromEntries(Object.entries(s.variables).map(([k,v])=>[k,v.initial]));if(s.setup&&choice){if(typeof choice!=='object'||Array.isArray(choice)||Object.keys(choice).some(k=>!s.setup.fields.some(f=>f.key===k))||s.setup.fields.some(f=>!Object.hasOwn(choice,f.key)))fail('invalid setup selection');for(const [k,v]of Object.entries(choice))values[k]=stateValue(v,s.variables[k]);checkSetup(values,s.setup);}else if(choice){const c=s.startup?.choices.find(c=>c.id===choice);if(!c)fail('unknown startup choice');Object.assign(values,c.values);}return deriveStory(values,s);}
 export function deriveStory(values,s){const next={...values};for(const d of s.derive??[])next[d.to]=Object.hasOwn(d.values,String(next[d.from]))?d.values[String(next[d.from])]:null;return next;}
 export function applyStory(values,updates,s){const next={...values};for(const u of updates){const v=s.variables[u.key];if(!v)fail('undeclared update');if(u.op==='set')next[u.key]=stateValue(u.value,v);else{if(v.type!=='number'||!Number.isFinite(next[u.key])||!Number.isFinite(u.value))fail('delta has unknown numeric base');next[u.key]=stateValue(next[u.key]+(u.op==='subtract'?-u.value:u.value),v);}}return deriveStory(next,s);}
 export function parseStoryUpdates(source,s,displayRanges=[],onIgnored=()=>{}){
@@ -108,4 +111,4 @@ export function storySnapshot(values,s){
  if(s.track!==undefined)result.track=values[s.track]??null;
  return result;
 }
-export function storyContext(values,s){return s.request?sourceRequestText(values,s.request):s.context?`${s.context.title}\n${s.context.fields.map(f=>`${f.label}: ${values[f.key]===null?'Unavailable':String(values[f.key])}`).join('\n')}`:'';}
+export function storyContext(values,s){return s.setup?setupContext(values,s.setup):s.request?sourceRequestText(values,s.request):s.context?`${s.context.title}\n${s.context.fields.map(f=>`${f.label}: ${values[f.key]===null?'Unavailable':String(values[f.key])}`).join('\n')}`:'';}

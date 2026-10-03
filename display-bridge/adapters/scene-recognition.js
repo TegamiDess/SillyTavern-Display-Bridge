@@ -4,7 +4,7 @@ import {sceneOffset} from './scene-fragments.js';
 const CAP = '(.+?)';
 export const sceneBackgroundPattern = layout => (layout === 'plain-four' ? '' : '<' + CAP + '>') + '<img src=' + Array(layout === 'numbered-five' ? 5 : 4).fill('"' + CAP + '"').join('_') + '>';
 export const sceneCastPattern = (count, fields = 4, generic = true) => '<' + (generic ? '\\d' : count) + '>' + ('<img="' + CAP + '"_"' + CAP + '"><ct=' + Array(fields).fill('"' + CAP + '"').join('_') + '>').repeat(count);
-const omitted = 'Uses the local scene renderer with reviewed layers, position/tooltip bindings and text formatting. Source recency/state macros, specialized poses, animations and handlers are not executed.';
+const omitted = 'Uses the local scene renderer with reviewed layers, position/tooltip bindings and text formatting. History and motion are reviewed separately in scene assembly. Other source state, specialized poses and handlers are not executed.';
 const imgRoles = output => [...output.matchAll(/<img\b[^>]*>/g)].map(m => ({class:/\bclass="([^"]*)"/.exec(m[0])?.[1], ref:/\bsrc="\{\{raw::\$(\d+)\}\}"/.exec(m[0])?.[1]}));
 export function sceneOffsetAliases(rule){
     const options=rule.matchOptions??{},names=String(rule.in??'').split('|');

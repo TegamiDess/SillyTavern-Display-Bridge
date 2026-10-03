@@ -5,6 +5,7 @@ The project license applies to original extension code. It does not replace lice
 - **SillyTavern** — host application and browser-test dependencies, AGPLv3. The test server reads the user's separately installed SillyTavern checkout; the host is not bundled here. https://github.com/SillyTavern/SillyTavern
 - **RisuAI / risup format references** — the bounded module reader uses legacy Risu module framing and the RPack byte-permutation table. See the format-source links in V3 Asset Sprites' IMPORT-NOTES.md and comments in risu-module.js. The external risup CLI is not bundled. https://github.com/kwaroran/RisuAI and https://github.com/rescuetycoon/risup
 - **Card display references** — technical fixtures/styles include source-derived display patterns. Their inclusion does not assert authorship or ownership of the original cards. Imported user cards and their assets are not covered by the project's licensing grant.
+- **Interactive To Love Ru example** — `docs/index.html` embeds selected SFW display text and artwork from the recorded example. Characters and source artwork retain their respective creators' rights; the AGPL grant covers original viewer/extension code, not those assets. Readable viewer source is in `tools/showcase/`, with shared renderer source in `display-bridge/`.
 - **@adobe/css-tools 4.4.4** — MIT-licensed development dependency. Installed through npm for unit tests; not bundled with the extension runtime. Its notice is reproduced below.
 
 (The MIT License)

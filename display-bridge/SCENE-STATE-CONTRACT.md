@@ -1,6 +1,6 @@
 # Scene/state contract — design version 1
 
-Status: stage-2 design with executable **test-only** examples. This document does not add fields to the current portable profile, claim an ST transaction implementation, or enable Risu scripts. Basis: [source audit](SCENE-SOURCE-AUDIT.md). Production adoption requires validator/editor/export changes and host integration tests together.
+Status: stage-2 design with executable **test-only** examples. This document does not add fields to the current portable profile, claim an ST transaction implementation, or enable Risu scripts. Basis: [source audit](ROADMAP.md). Production adoption requires validator/editor/export changes and host integration tests together.
 
 ## Ownership
 

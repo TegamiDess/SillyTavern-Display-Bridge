@@ -19,7 +19,7 @@ export function createGallery(data, { stateFor } = {}) {
     const header = element('div','gallery-header'); header.append(element('h1','',data.name)); panel.append(header);
     const list = element('div','post-list-container'), head = element('div','post-list-header');
     const columns = ['num','title','writer','date','view','recommend'];
-    ['번호','제목','글쓴이','작성일','조회','추천'].forEach((text,i) => head.append(element('div',`header-item col-${columns[i]}`,text)));
+    ['No.','Title','Author','Date','Views','Votes'].forEach((text,i) => head.append(element('div',`header-item col-${columns[i]}`,text)));
     list.append(head);
     const pages = [];
     data.posts.forEach((post,index) => {
@@ -33,19 +33,19 @@ export function createGallery(data, { stateFor } = {}) {
         const content = element('div','post-content-wrapper'); content.id=`content-${index}`; title.setAttribute('aria-controls',content.id);
         content.append(element('div','post-full-content',post.content));
         if (post.comments.length) {
-            const comments = element('section','comments-section'); comments.append(element('h4','',`댓글 ${post.comments.length}`));
+            const comments = element('section','comments-section'); comments.append(element('h4','',`Comments ${post.comments.length}`));
             const ul = element('ul','comment-list');
             for (const comment of post.comments) {
                 const li = element('li','comment-item'), author = element('div','comment-author-wrapper');
                 author.append(element('span','comment-author',comment.author));
-                if (comment.type) author.append(element('span',comment.type === 'F' ? 'icon-fixed':'icon-half',comment.type === 'F'?'고':'반'));
+                if (comment.type) author.append(element('span',comment.type === 'F' ? 'icon-fixed':'icon-half',comment.type === 'F'?'Fixed':'Semi-fixed'));
                 li.append(author,element('div','comment-content-wrapper',comment.text)); ul.append(li);
             }
             comments.append(ul); content.append(comments);
         }
         pages.push({id,content}); item.append(input,row,content); list.append(item);
     });
-    if (!data.posts.length) list.append(element('p','','표시할 게시글 없음'));
+    if (!data.posts.length) list.append(element('p','','No posts to display'));
     panel.append(list); shadow.append(style,panel);
     const controls = data.posts.length ? checkboxActions(shadow,{namespace:'streamer-gallery',stateFor,onSync(values){pages.forEach(({id,content}) => {content.hidden=!values[id];content.inert=!values[id];});}}) : null;
     shadow.addEventListener('keydown', event => {

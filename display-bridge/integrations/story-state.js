@@ -4,6 +4,7 @@ import {parseStoryUpdates,applyStory,initialStory,storySnapshot,storyContext} fr
 import {parsePortraitDialogue} from '../adapters/portrait-dialogue.js';
 import {projectSourceRequest} from '../adapters/scene-source-context.js';
 import {sceneScoreCaptionRanges} from '../adapters/scene-fragments.js';
+import {createBoundedParseCache} from '../core/bounded-parse-cache.js';
 
 // Host mutations happen only at explicit initialization or accepted message events.
 // Render reads the cached projection; it never commits an update.
@@ -11,6 +12,11 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
  let cache=null,attempt=null,busy=false,saving=false,serial=Promise.resolve();
  const contextKey='display_bridge_scene_state';
  const warnedEntities=new Set();let warningScope=null;
+ let parsingParameters;
+ const parsed=createBoundedParseCache(text=>{
+  const ignored=[],updates=parse(text,parsingParameters,d=>ignored.push(d));
+  return {updates,ignored};
+ });
  function reportIgnored(text,p){
   const key=JSON.stringify(p.owner);if(warningScope!==key){warningScope=key;warnedEntities.clear();}
   parseStoryUpdates(text,p.state,p.config.format?.kind==='scene-fragments'?sceneScoreCaptionRanges(text):[],({entity})=>{
@@ -27,7 +33,11 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
   }
   return updates.sort((a,b)=>a.start-b.start);
  }
- function journal(p,saved=p.ctx.chatMetadata[STORY_KEY],ignored){return createStoryJournal({config:p.state,owner:p.owner,saved,parse:text=>parse(text,p,ignored?d=>{if(!ignored.has(text))ignored.set(text,[]);ignored.get(text).push({start:d.start,end:d.end});}:undefined)});}
+ function journal(p,saved=p.ctx.chatMetadata[STORY_KEY],ignored){const parseScope=JSON.stringify(p.config);return createStoryJournal({config:p.state,owner:p.owner,saved,parse:text=>{
+  parsingParameters=p;const result=parsed.read(text,parseScope);
+  if(ignored&&result.ignored.length)ignored.set(text,result.ignored.map(({start,end})=>({start,end})));
+  return result.updates;
+ }});}
  function invalidate(){cache=null;changed();}
  function read(){
   const p=parameters();if(!p)return null;
@@ -75,7 +85,13 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
   if(p.state.startup){if(!c)throw Error('Choose a starting branch');replace=p.ctx.chat.length===1&&!p.ctx.chat[0].is_user&&oldText===p.state.startup.marker;if(!replace&&p.ctx.chatMetadata[STORY_KEY]?.choice!==choice)throw Error('A startup choice requires a fresh chat containing its exact marker.');if(replace){p.ctx.chat[0].mes=c.text;if(Array.isArray(p.ctx.chat[0].swipes))p.ctx.chat[0].swipes[p.ctx.chat[0].swipe_id??0]=c.text;}}
   if(screen&&replace){first.mes=nextText;if(Array.isArray(first.swipes)){const slot=first.swipe_id??0;if(!Number.isInteger(slot)||slot<0||slot>=first.swipes.length){first.mes=oldText;throw Error('Finish the pending greeting swipe before setup.');}first.swipes[slot]=nextText;}}
   const messageIds=p.ctx.chat.map(m=>[m,m[MESSAGE_KEY]]);
-  try{const j=journal(p,null);j.rebuild(p.ctx.chat,choice);const accepted=p.ctx.chat.filter(m=>!m.is_user&&!m.is_system).map(m=>m.mes);await persist(p,j);for(const text of accepted)reportIgnored(text,p);}
+  try{
+   // Rebuild must retain provenance for accepted messages hidden by /hide.
+   // An all-visible rebuild can still recover a damaged or changed journal.
+   const hasHiddenState=p.ctx.chat.some(m=>!m.is_user&&m.is_system&&m[MESSAGE_KEY]);
+   const j=journal(p,hasHiddenState?p.ctx.chatMetadata[STORY_KEY]:null),result=j.rebuild(p.ctx.chat,choice);
+   const accepted=[...result.views.keys()].map(m=>m.mes);await persist(p,j);for(const text of accepted)reportIgnored(text,p);
+  }
   catch(e){for(const [m,id] of messageIds){if(id===undefined)delete m[MESSAGE_KEY];else m[MESSAGE_KEY]=id;}if(replace){first.mes=oldText;if(oldSwipes)first.swipes=oldSwipes;invalidate();}throw e;}
   // A redraw failure must not undo a greeting already saved to disk.
   if(replace&&getContext().chat===p.ctx.chat)await p.ctx.reloadCurrentChat?.();
@@ -99,7 +115,7 @@ export function createStoryState({getContext,scope,changed=()=>{}}){
  }
  function cancel(){if(attempt)attempt.cancelled=true;busy=false;invalidate();}
  function end(){busy=false;invalidate();}
- function switched(){attempt=null;busy=false;warningScope=null;warnedEntities.clear();invalidate();getContext().setExtensionPrompt?.(contextKey,'',1,0);}
+ function switched(){attempt=null;busy=false;warningScope=null;warnedEntities.clear();parsed.clear();parsingParameters=null;invalidate();getContext().setExtensionPrompt?.(contextKey,'',1,0);}
  function project(message,plan){
   const p=parameters();if(!p)return plan;const r=read(),view=r?.views.get(message);
   const scenes=plan.items.filter(i=>i.presentation==='scene');

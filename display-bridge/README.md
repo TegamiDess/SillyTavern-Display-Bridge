@@ -1,4 +1,4 @@
-# Display Bridge 0.22.0
+# Display Bridge 0.22.1
 
 Renders supported card UI inside SillyTavern using reviewed adapters and portable profiles. Companion V3 Asset Sprites 0.10.0 supplies declared local images and CHARX import handoff.
 

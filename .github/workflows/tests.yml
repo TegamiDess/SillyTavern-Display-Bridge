@@ -12,3 +12,6 @@ jobs:
           node-version: '24'
       - run: npm ci --prefix display-bridge --ignore-scripts
       - run: node --test --test-isolation=none display-bridge/tests/*.test.js
+      - run: npm ci --prefix optional/Extension-Summaryception --ignore-scripts
+      - run: npm test --prefix optional/Extension-Summaryception
+      - run: npx --prefix optional/Extension-Summaryception tsc --noEmit -p optional/Extension-Summaryception/tsconfig.json

@@ -1,5 +1,29 @@
 # Release acceptance
 
+## Display Bridge 0.22.1 / provider 0.10.0 — 2026-10-04
+
+This update adds bounded deterministic parsing and rendering-plan reuse for long
+chats, English extension-owned UI labels, and preservation of accepted state and
+scene-depth rendering across summarizer-hidden history. Journal acceptance still
+checks source, swipe and parent; cached parsing does not bypass validation.
+All **247 Bridge unit tests** passed for this update. Earlier visible actual-card
+checks covered 100/300/600-message performance, hidden-state replay, historical
+edits/swipes and scene-depth crossings; the joint-fix trial passed 27 checks.
+
+The separately installable [Summaryception companion](optional/Extension-Summaryception/README.md)
+contains the approved UI and compatibility work based on 23.40.0. Its full local
+suite passed **577 tests**, type checking and changed-file lint. The latest 13
+visible UI regression checks passed with the actual To Love Ru card and a new
+600-message SFW chat. Saved chats/settings were preserved. Private card fixtures,
+test conversations, credentials and optional portrait audio are not included.
+No model calls were needed for these optimisation/compatibility checks.
+The published companion subset passed **535 tests** and type checking separately;
+42 tests using private actual-card fixtures remain local.
+
+These focused checks extend the baseline audit below; they are not a fresh audit
+of all host dependencies or every third-party extension. See [performance notes](PERFORMANCE.md)
+for measurement scope. The existing Pages example remains available.
+
 ## Display Bridge 0.22.0 / provider 0.10.0 — 2026-10-03
 
 This release incorporates the audited development changes since 0.21.2 / 0.9.1. Optional portrait audio/click-image experiments remain outside the baseline.

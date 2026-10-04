@@ -1,6 +1,6 @@
 # Testing and feedback
 
-Current release: Display Bridge 0.22.0 / V3 Asset Sprites 0.10.0. The [current audit](RELEASE-ACCEPTANCE.md) records scope and limitations. On 2026-10-03, **234 unit tests and 187 visible browser checks passed**.
+Current release: Display Bridge 0.22.1 / V3 Asset Sprites 0.10.0. The [current audit](RELEASE-ACCEPTANCE.md) records scope and limitations. The current Bridge suite passes **247 unit tests**; the preceding baseline audit passed 187 visible browser checks. Subsequent actual-card compatibility trials are recorded in the acceptance notes. The optional Summaryception companion has its own [test instructions](optional/Extension-Summaryception/README.md).
 
 ## Automated checks
 

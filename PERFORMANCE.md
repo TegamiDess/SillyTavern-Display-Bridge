@@ -1,4 +1,27 @@
-# Performance cleanup — 0.14.3 / 0.6.5
+# Performance
+
+## Long-chat work — 0.22.1
+
+Deterministic source parsing uses a bounded cache, cleared on chat/configuration
+changes. Saved journal validation and applied state remain authoritative. Render
+plans now depend on presentation boundaries and committed state, rather than
+every numeric depth increment. A render pass shares its message lookup and state
+read; closed information drawers avoid reading scroll position.
+
+In a visible-browser trial using the actual To Love Ru card with scripted SFW
+responses, the 600-message state refresh fell from 1,312 ms to 68 ms, and reply
+accept/save/render from 4,864 ms to 1,143 ms. All 297 earlier assistant views were
+retained after append. These are single-run synthetic timings, not FPS or model
+speed claims. Idle timings were mixed; cold loading and genuine earlier edits
+still require work.
+
+The optional Summaryception companion separately reduces hidden/Off UI work and
+reuses matching display calculations. On a 600-message chat, 20 unchanged Off
+Status refreshes fell from 345 ms to 90 ms and Off Memory from 313 ms to 142 ms.
+Regex-dependent history plans remain uncached; provider caching is unaffected.
+These measurements are hardware-dependent diagnostics, not universal guarantees.
+
+## Earlier editor cleanup — 0.14.3 / 0.6.5
 
 - A preset editor shares one asset-name suggestion list across all mappings. Existing outfit mapping rows are created when their section first opens. Unopened options retain their mappings and are still validated during preview/review/export.
 - Closed Display Bridge settings no longer compute compatibility reports on chat render passes. Opening the panel computes a fresh report; explicit report exports and API requests remain fresh. An open panel still updates with chat/asset changes. Diagnostics are computed once per settings update rather than twice.

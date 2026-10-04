@@ -1,0 +1,329 @@
+import { getChatStore, getEffectiveSettings } from '../foundation/state.js';
+import { applyRegexToMessage } from './regex-proxy.js';
+import { buildMemoryInjectionParts, renderInjectionTemplate } from './memory-injection.js';
+import { addBudgetStats, countMessageTokens, createBudgetStats } from './token-count.js';
+
+// ─── Assistant Turn Utilities ────────────────────────────────────────
+
+/**
+ * @typedef {object} AssistantTurn
+ * @property {number} index - Chat index for the assistant turn.
+ * @property {string} mes - Assistant message text.
+ * @property {string} name - Assistant display name.
+ */
+
+/**
+ * Build an assistant turn view of a chat message.
+ * @param {ChatMessage} message - Assistant chat message
+ * @param {number} index - Chat index for the message
+ * @returns {AssistantTurn} Assistant turn
+ */
+export function toAssistantTurn(message, index) {
+    return { index, mes: String(message.mes), name: message.name || 'Assistant' };
+}
+
+/**
+ * @typedef {object} IndexedChatMessage
+ * @property {number} index - Chat index for the message.
+ * @property {ChatMessage} message - Message at the index.
+ */
+
+/**
+ * Find the latest message at or before a start index that matches a predicate.
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @param {number} startIndex - Index to begin searching from
+ * @param {(message: ChatMessage, index: number) => boolean} predicate - Match predicate
+ * @param {number} [minIndex] - Lowest index to inspect
+ * @returns {IndexedChatMessage|null} Matching message, or null
+ */
+export function findLastMessage(chat, startIndex, predicate, minIndex = 0) {
+    if (!Number.isFinite(startIndex) || !Number.isFinite(minIndex) || startIndex < minIndex) {
+        return null;
+    }
+
+    for (const entry of iterateChatRange(chat, startIndex, minIndex)) {
+        if (predicate(entry.message, entry.index)) {
+            return entry;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Iterate an inclusive chat range, forward or backward, clamped to existing indices.
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @param {number} startIndex - Requested start index
+ * @param {number} endIndex - Requested end index
+ * @yields {IndexedChatMessage} Indexed messages in traversal order
+ * @returns {IterableIterator<IndexedChatMessage>} Indexed messages in traversal order
+ */
+export function* iterateChatRange(chat, startIndex, endIndex) {
+    if (!Array.isArray(chat) || chat.length === 0) {
+        return;
+    }
+    if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) {
+        return;
+    }
+
+    if (startIndex <= endIndex) {
+        yield* iterateForwardChatRange(chat, startIndex, endIndex);
+        return;
+    }
+
+    yield* iterateBackwardChatRange(chat, startIndex, endIndex);
+}
+
+function* iterateForwardChatRange(chat, startIndex, endIndex) {
+    const start = Math.max(0, Math.trunc(startIndex));
+    const end = Math.min(chat.length - 1, Math.trunc(endIndex));
+    if (start > end) {
+        return;
+    }
+
+    for (let i = start; i <= end; i++) {
+        yield { index: i, message: chat[i] };
+    }
+}
+
+function* iterateBackwardChatRange(chat, startIndex, endIndex) {
+    const start = Math.min(chat.length - 1, Math.trunc(startIndex));
+    const end = Math.max(0, Math.trunc(endIndex));
+    if (start < end) {
+        return;
+    }
+
+    for (let i = start; i >= end; i--) {
+        yield { index: i, message: chat[i] };
+    }
+}
+
+/**
+ * Check whether a live chat record belongs in Layer 0 summarizer planning.
+ * @param {ChatMessage | undefined} message
+ * @returns {boolean}
+ */
+export function isSummarizerConversationMessage(message) {
+    if (!message?.mes || !String(message.mes).trim()) {
+        return false;
+    }
+    // Only an explicit host system flag marks a message as system. Never infer
+    // it from role or content.
+    if (message.is_system || message.is_hidden || message.extra?.type) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Collect assistant turns matching a predicate, carrying their chat indices.
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @param {(message: ChatMessage) => boolean} predicate - Inclusion predicate
+ * @returns {AssistantTurn[]} Matching assistant turns
+ */
+export function collectAssistantTurns(chat, predicate) {
+    const turns = [];
+    for (let i = 0; i < chat.length; i++) {
+        const m = chat[i];
+        if (predicate(m)) {
+            turns.push(toAssistantTurn(m, i));
+        }
+    }
+    return turns;
+}
+
+/**
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @returns {AssistantTurn[]} Assistant turns
+ */
+export function getAssistantTurns(chat) {
+    return collectAssistantTurns(chat, (m) => isSummarizerConversationMessage(m) && !m.is_user);
+}
+
+/**
+ * Get assistant turns that are not ghosted or hidden.
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @returns {AssistantTurn[]} Visible assistant turns
+ */
+export function getVisibleAssistantTurns(chat) {
+    return collectAssistantTurns(chat, (m) =>
+        Boolean(
+            !m.is_user &&
+            !m.is_system &&
+            !isSummaryceptionOwnedMessage(m) &&
+            m.mes &&
+            m.mes.trim().length > 0,
+        ),
+    );
+}
+
+/**
+ * Map chat indices to SillyTavern prompt depth for regex min/max depth filters.
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @returns {Map<number, number>} Prompt depth by chat index
+ */
+export function getPromptDepthsByChatIndex(chat) {
+    const promptIndexes = [];
+    const depths = new Map();
+
+    for (let i = 0; i < chat.length; i++) {
+        if (!chat[i]?.is_system) {
+            promptIndexes.push(i);
+        }
+    }
+
+    for (let i = 0; i < promptIndexes.length; i++) {
+        depths.set(promptIndexes[i], promptIndexes.length - i - 1);
+    }
+
+    return depths;
+}
+/**
+ * Format a chat message as the summarizer sees it.
+ * @param {ChatMessage} message
+ * @param {string} text
+ * @returns {string}
+ */
+export function formatMessageSpeakerLine(message, text) {
+    return `${message.is_user ? 'Player' : 'Assistant'}: ${text}`;
+}
+
+/**
+ * Render one chat message into speaker lines, with and without regex scripts.
+ * @param {ChatMessage} message
+ * @param {number | undefined} depth
+ * @param {{ applyRegexScripts?: boolean }} [options]
+ * @returns {Promise<{ rawText: string, finalText: string, rawLine: string, finalLine: string, changed: boolean }>}
+ */
+async function renderMessageLines(message, depth, { applyRegexScripts } = {}) {
+    const rawText = String(message.mes || '').trim();
+    const finalText = applyRegexScripts
+        ? await applyRegexToMessage(rawText, Boolean(message.is_user), depth)
+        : rawText;
+    const rawLine = formatMessageSpeakerLine(message, rawText);
+    const finalLine = formatMessageSpeakerLine(message, finalText);
+
+    return { rawText, finalText, rawLine, finalLine, changed: rawLine !== finalLine };
+}
+
+/**
+ * @typedef {object} CountedChatMessage
+ * @property {number} index - Chat index for the message.
+ * @property {ChatMessage} message - Message at the index.
+ * @property {import('./token-count.js').CountedBudgetMessage} stats - Rendered token stats.
+ * @property {string} finalLine - Speaker line after regex scripts.
+ */
+
+/**
+ * Scan an inclusive chat range with Layer 0 passage rules: prompt depths computed once,
+ * non-conversation records skipped, each survivor rendered and counted exactly once.
+ * @param {ChatMessage[]} chat - The SillyTavern chat array
+ * @param {number} startIndex - Requested start index
+ * @param {number} endIndex - Requested end index
+ * @param {ExtensionSettings} settings
+ * @yields {CountedChatMessage} Counted messages in traversal order
+ */
+export async function* countedChatMessages(chat, startIndex, endIndex, settings) {
+    const promptDepths = getPromptDepthsByChatIndex(chat);
+    for (const { index, message } of iterateChatRange(chat, startIndex, endIndex)) {
+        if (!isSummarizerConversationMessage(message)) {
+            continue;
+        }
+        const depth = promptDepths.get(index);
+        const { rawLine, finalLine, changed } = await renderMessageLines(message, depth, {
+            applyRegexScripts: settings.applyRegexScripts,
+        });
+        const stats = { ...(await countMessageTokens(message, rawLine, finalLine)), changed };
+        yield { index, message, stats, finalLine };
+    }
+}
+
+/**
+ * @typedef {object} PassageRegexStats
+ * @property {number} rawTokens - Rendered passage tokens before regex scripts
+ * @property {number} finalTokens - Rendered passage tokens after regex scripts
+ * @property {number} savedTokens - Raw tokens minus final tokens
+ * @property {number} savedPercent - Percent of raw tokens removed by regex scripts
+ * @property {boolean} rawTokensEstimated - Whether rawTokens came from fallback estimation
+ * @property {boolean} finalTokensEstimated - Whether finalTokens came from fallback estimation
+ * @property {boolean} savedTokensEstimated - Whether savedTokens includes fallback estimation
+ * @property {number} changedMessageCount - Number of messages changed by regex scripts
+ */
+
+/**
+ * @typedef {object} PassageWithStats
+ * @property {string} text - Rendered passage text after regex scripts
+ * @property {PassageRegexStats} stats - Passage token stats
+ */
+
+/**
+ * Skips user-hidden messages while retaining messages hidden by Summaryception ownership.
+ * Also skips empty messages.
+ * @param {ChatMessage[]} chat
+ * @param {number} startIdx
+ * @param {number} endIdx
+ * @returns {Promise<PassageWithStats>}
+ */
+export async function buildPassageFromRangeWithStats(chat, startIdx, endIdx) {
+    const accumulator = { ...createBudgetStats(), finalLines: /** @type {string[]} */ ([]) };
+
+    if (endIdx >= startIdx) {
+        for await (const { stats, finalLine } of countedChatMessages(
+            chat,
+            startIdx,
+            endIdx,
+            getEffectiveSettings(),
+        )) {
+            accumulator.finalLines.push(finalLine);
+            addBudgetStats(accumulator, stats);
+        }
+    }
+
+    return buildPassageResult(accumulator);
+}
+
+/**
+ * Check whether Summaryception owns a live message's hidden state.
+ * @param {ChatMessage | undefined} message
+ * @returns {boolean}
+ */
+export function isSummaryceptionOwnedMessage(message) {
+    if (typeof message?.sc_id !== 'string') {
+        return false;
+    }
+    return getChatStore().ghostedMessageIds.includes(message.sc_id);
+}
+
+function buildPassageResult(accumulator) {
+    const { finalLines, ...stats } = accumulator;
+    return {
+        text: finalLines.join('\n'),
+        stats: {
+            ...stats,
+            savedPercent: stats.rawTokens > 0 ? (stats.savedTokens / stats.rawTokens) * 100 : 0,
+        },
+    };
+}
+
+/**
+ * Build a full context string from all layers down to (and including) a target layer.
+ * Deepest layers first, target layer last, giving the summarizer full awareness
+ * of what's already been captured so it can avoid redundancy.
+ *
+ * @param {number} downToLayer - Include this layer and all layers above it
+ * @returns {string} - Combined context string, or '(none yet)'
+ */
+export function buildFullContext(downToLayer = 0) {
+    const store = getChatStore();
+    const injectionParts = buildMemoryInjectionParts(getLayersAtOrAbove(store.layers, downToLayer));
+    // Summarizer context is the raw memory body, never template-wrapped, so no
+    // injectionTemplate is supplied. '(none yet)' stands in when empty.
+    return renderInjectionTemplate(injectionParts, {}, { emptyFallback: '(none yet)' });
+}
+
+function getLayersAtOrAbove(layers, downToLayer) {
+    if (!Array.isArray(layers)) {
+        return [];
+    }
+    return layers.slice(Math.max(0, downToLayer));
+}

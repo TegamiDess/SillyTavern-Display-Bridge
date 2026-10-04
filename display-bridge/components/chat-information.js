@@ -12,7 +12,7 @@ export function createChatInformation(){
  function update({key:nextKey,config,snapshot,issue,avatar,state}){
   const next=JSON.stringify([config.sceneControls?.roster,snapshot,issue,config.theme,state.read().variant,config.imageMappings]);
   if(key===nextKey&&signature===next){widget?.refresh();return;}
-  const drawer=widget?.host.querySelector('.scene-drawer'),open=key===nextKey&&drawer&&!drawer.hidden,scroll=drawer?.scrollTop??0;
+  const drawer=widget?.host.querySelector('.scene-drawer'),open=key===nextKey&&drawer&&!drawer.hidden,scroll=open?drawer.scrollTop:0;
   widget?.dispose();widget?.host.remove();key=nextKey;signature=next;
   for(const [name,value]of Object.entries({paper:config.theme.background,ink:config.theme.text,accent:config.theme.accent}))host.style.setProperty('--'+name,value);
   widget=createSceneControls({presentation:'scene',config,sceneSnapshot:snapshot,snapshotIssue:issue,chatLevel:true},{avatar,resolver:resolveImage,state,media:{external:true}});

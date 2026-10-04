@@ -1,6 +1,6 @@
 # Display Bridge and V3 Asset Sprites
 
-Experimental, PC-first SillyTavern extensions for importing CHARX assets and supported Risu-style UI. **Display Bridge 0.22.0 / V3 Asset Sprites 0.10.0**.
+Experimental, PC-first SillyTavern extensions for importing CHARX assets and supported Risu-style UI. **Display Bridge 0.22.1 / V3 Asset Sprites 0.10.0**.
 
 **[Try the interactive To Love Ru example](https://tegamidess.github.io/SillyTavern-Display-Bridge/)** — ten recorded SFW exchanges, twenty illustrated scenes, hover portraits, Scene controls and expandable dialogue. Opens directly in your browser; no SillyTavern, card import or API key required.
 
@@ -17,12 +17,14 @@ This repository has two extension roots. ST's Git install button cannot install 
 
 ## What this release adds
 
-- Reviewed conversation setup and startup screens with chat-local prompt variables.
-- Scene frame controls, dialogue/status opacity sliders and portable character colours.
-- Scene history depth, portrait/cloud motion and improved layered/single-image layouts.
-- Request-only state append to the latest user message and optional cleanup of older scene markup, preserving saved chat.
-- Support for named-image tags such as `<img char=smile>`.
-- Fixes for saving renamed character labels and restoring empty setup choices.
+- Faster long-chat state parsing and reuse of unchanged scene rendering plans.
+- Accepted affection/location state survives summarizer-hidden history, with source and branch validation retained.
+- Summarized assistant scenes keep their normal display-depth rules instead of exposing old inline backgrounds.
+- English labels for extension-owned gallery and exploration-map controls.
+
+An [optional Summaryception compatibility build](optional/Extension-Summaryception/README.md)
+adds UI optimisations, source-freshness review and integration fixes. Install it
+separately only if wanted; the standard two-folder installation above is unchanged.
 
 Portrait audio and the click-image experiment are not included. Chat-owned background music remains supported. See [current validation and limits](RELEASE-ACCEPTANCE.md).
 

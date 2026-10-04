@@ -32,7 +32,7 @@ export function createWitchcureAuxiliary(data, { witchcure, avatar, resolver, st
         // outer panel a dedicated control so inner clicks cannot toggle it too.
         const outer = shadow.querySelector('.btn-map');
         const content = document.createElement('div'); content.className = outer.className; content.append(...outer.childNodes); outer.replaceWith(content);
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'db-map-header'; button.dataset.dbControl = 'map-toggle'; button.textContent = '🧭 탐험 지도';
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'db-map-header'; button.dataset.dbControl = 'map-toggle'; button.textContent = '🧭 Exploration map';
         shadow.insertBefore(button, shadow.querySelector('#map-toggle'));
         const regionIds = [...shadow.querySelectorAll('input[id^=region-]')].map(x => x.id);
         controls = checkboxActions(shadow, { namespace:'witchcure-map', stateFor, groups:[regionIds], defaults:{'map-toggle':true}, onSync(values) {

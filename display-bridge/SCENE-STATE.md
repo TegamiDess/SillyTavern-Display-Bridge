@@ -58,6 +58,44 @@ Editing an accepted message invalidates its state and dependent later messages. 
 
 The journal is saved in ST chat metadata (`display_bridge_story`), with stable IDs on messages. It includes accepted source text and branch ancestry, bounded to 2,048 revisions and 8,000,000 serialized characters. It therefore increases chat-file size; it is private chat data, not telemetry. It is excluded from ordinary profile and configured-card exports. Exports carry profile defaults and startup choices, never the current chat's totals. View preference reset is separate from story-state rebuild.
 
+### Hidden and summarized history
+
+Native `/hide` and summarizers such as Summaryception mark ordinary chat messages
+as `is_system`. Accepted story messages remain part of the journal while hidden:
+their affection, relationship and location updates still contribute to current
+state. They do not have to remain in the model's raw history. Hiding/unhiding and
+reloading do not apply updates again. Genuine system messages that were never
+accepted by the journal remain excluded.
+
+The profile's configured state context continues to supply current values. For
+To Love Ru's reviewed request template this is the full 16-character roster,
+appended once to the latest user message in the disposable request copy. Characters
+do not disappear from this block simply because they have been absent from recent
+scenes. Saved chat prose and the summarizer's memory are not rewritten by this
+append. No lorebook or model-generated numerical summary is needed.
+
+Hidden messages still undergo source, swipe and parent checks. Editing one
+invalidates its dependent branch until explicitly rebuilt; deleting it does not
+make its saved journal record an independent source of truth. Rebuild preserves
+the provenance of accepted hidden messages and replays retained active revisions.
+
+If a hidden message has a Display Bridge ID but its journal record is missing,
+state fails with a recovery message instead of silently returning profile defaults.
+If records were already discarded by an older rebuild, or the configuration or
+journal is invalid, unhide the original story messages, review them, then use
+**Initialize / rebuild scene state**. After a successful rebuild they can be hidden
+again. A message hidden before Display Bridge ever accepted it has no journal
+provenance; unhide and review it before the initial rebuild. Arbitrary hidden
+system entries are never automatically treated as story updates.
+
+Display rendering uses separate eligibility from model-context visibility.
+An assistant message recognized by the saved scene journal or Summaryception's
+hidden-message ownership retains its Bridge rendering and normal history-depth
+rules. Older summarized scenes therefore remain text-only instead of exposing
+their native inline background images. User messages and typed system notes are
+excluded. This rendering decision does not accept new numerical updates or put
+hidden messages back into model context.
+
 Music needs an initial user Play action. Within a state-enabled chat, configured track changes can then continue playback on the latest completed scene. Pause cancels that intent; hiding controls does not. Card/chat changes, disabling the bridge and reload stop playback. If the browser refuses an automatic transition, use Play again. Audio is still one local native player; no soundtrack is preloaded.
 
 ## Explicit exclusions

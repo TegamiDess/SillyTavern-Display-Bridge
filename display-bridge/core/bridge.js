@@ -20,6 +20,8 @@ import { createActionStore, reduceAction, WITCH_MODE } from './actions.js';
 import { createCharacterLifecycle } from './character-lifecycle.js';
 import { createPreferences } from './preferences.js';
 import { displaySource, makePlan, renderPlan } from './pipeline.js';
+import {planRecency} from './plan-recency.js';
+import {displayProvenance,isDisplayAssistant} from './message-visibility.js';
 import { createMediaPanel } from '../components/media-panel.js';
 import { witchcureSource, compileWitchcure } from '../adapters/witchcure.js';
 import { createCompatibilityView, sourceOrigin, panelNames } from './compatibility.js';
@@ -31,6 +33,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     const sceneAudio=createSceneAudio(),chatMusic=createChatMusic(sceneAudio),chatInformation=createChatInformation();let generationBusy=false;
     const imageViewer=createImageViewer({enabled:()=>settings().compactImages===true,scope:()=>character()?chatScope(character().avatar):null});
     let plans = new WeakMap();
+    let renderHistory=null;
     const errors = new Map();
     const compiledSources = new Map();
     const actionStore = createActionStore({ onChange: schedule });
@@ -42,7 +45,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
     const subscriptions = [];
     const preferences=createPreferences({state:()=>settings().presentation??={},save:saveSettings});
     const lifecycle=createCharacterLifecycle({state:()=>settings().lifecycle??={},save:saveSettings,retire:retireCharacter,rename:renameCharacter});
-    const story=createStoryState({getContext,scope:()=>{const c=character();return c&&enabled(c.avatar)&&profile(c.avatar).adapters?.includes('portrait-dialogue')?{identity:lifecycle.ensure(c)?.id,config:profile(c.avatar).portraitSource}:null;},changed:()=>{if(profile(character()?.avatar).portraitSource?.sceneState){plans=new WeakMap();schedule();}}});
+    const story=createStoryState({getContext,scope:()=>{const c=character();return c&&enabled(c.avatar)&&profile(c.avatar).adapters?.includes('portrait-dialogue')?{identity:lifecycle.ensure(c)?.id,config:profile(c.avatar).portraitSource}:null;},changed:()=>{if(profile(character()?.avatar).portraitSource?.sceneState)schedule();}});
     const chatDock=createChatDock({rebuild:()=>story.rebuild(story.read()?.choice??null)});
 
     function retireCharacter(avatar,reason) {
@@ -111,14 +114,22 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         const gallery = profile(avatar).adapters?.includes('gallery') === true;
         const portrait=profile(avatar).adapters?.includes('portrait-dialogue')?profile(avatar).portraitSource??null:null;
         const chat = getContext().chat;
-        const depth = chat.length - 1 - chat.indexOf(message);
-        const latestAssistant=chat.findLast(m=>!m.is_user&&!m.is_system)===message;
+        const history=renderHistory?.chat===chat?renderHistory:null;
+        const depth = chat.length - 1 - (history?history.indices.get(message)??-1:chat.indexOf(message));
+        const latestAssistant=(history?history.latest:chat.findLast(m=>isDisplayAssistant(m,displayProvenance(getContext().chatMetadata))))===message;
         const recent = depth < 2;
         let cached = plans.get(message);
-        if (!cached || cached.source !== source || cached.avatar !== avatar || cached.stream !== stream || cached.gallery !== gallery || cached.portrait !== portrait || cached.witchcure !== witchcure || ((witchcure || portrait) && cached.depth !== depth) || cached.latestAssistant!==latestAssistant) {
-            cached = { source, avatar, stream, gallery, witchcure, portrait, depth, latestAssistant, plan: makePlan(source, { stream, gallery, witchcure, portrait, recent, statusRecent: depth < 6, depth, latestAssistant, storyUpdates:portrait?.sceneState&&message.mes===source?story.read()?.views.get(message)?.cleanup??[]:[] }) };
+        const recency=planRecency({depth,latestAssistant,portrait,witchcure});
+        const current=portrait?.sceneState?(history?(history.story??=story.read()):story.read()):null,view=current?.views.get(message);
+        const issue=view?null:current?.issue??null;
+        // A journal replay creates fresh view objects. Equal committed values
+        // still describe the same scene and must not remount old artwork/text.
+        const projection=cached&&cached.view===view&&cached.issue===issue?cached.projection:JSON.stringify([view?.before,view?.after,view?.cleanup,issue]);
+        if (!cached || cached.source !== source || cached.avatar !== avatar || cached.stream !== stream || cached.gallery !== gallery || cached.portrait !== portrait || cached.witchcure !== witchcure || cached.recency!==recency || cached.projection!==projection) {
+            cached = { source, avatar, stream, gallery, witchcure, portrait, recency, projection, plan: makePlan(source, { stream, gallery, witchcure, portrait, recent, statusRecent: depth < 6, depth, latestAssistant, storyUpdates:portrait?.sceneState&&message.mes===source?view?.cleanup??[]:[] }) };
             plans.set(message, cached);
         }
+        cached.view=view;cached.issue=issue;
         if(portrait?.sceneState&&!cached.storyProjected){story.project(message,cached.plan);cached.storyProjected=true;}
         return cached.plan;
     }
@@ -128,7 +139,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
         // shows its waiting indicator. Do not replay the old reply over it.
         const pendingSwipe = Array.isArray(message?.swipes) && Number.isInteger(message.swipe_id)
             && message.swipe_id >= 0 && message.swipe_id >= message.swipes.length;
-        return message && !pendingSwipe && !message.is_user && !message.is_system && enabled(avatar);
+        return message && !pendingSwipe && isDisplayAssistant(message,renderHistory?.provenance??displayProvenance(getContext().chatMetadata)) && enabled(avatar);
     }
     function intact(root, state) {
         return state && state.widgets.length > 0 && state.widgets.every(widget => root.contains(widget.host));
@@ -262,6 +273,8 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
             for (const [root] of errors) if (!root.isConnected || !chat?.contains(root)) errors.delete(root);
             const ctx = getContext();
             const avatar = character()?.avatar;
+            renderHistory={chat:ctx.chat,indices:new Map(),latest:null,provenance:displayProvenance(ctx.chatMetadata)};
+            ctx.chat.forEach((m,i)=>{if(!renderHistory.indices.has(m))renderHistory.indices.set(m,i);if(isDisplayAssistant(m,renderHistory.provenance))renderHistory.latest=m;});
             for (const root of chat?.querySelectorAll('.mes[mesid] .mes_text') ?? []) renderRoot(root, ctx, avatar);
             refreshChatMusic(chat,avatar);
             refreshChatInformation(chat,avatar);
@@ -269,7 +282,7 @@ export function createDisplayBridge({ getContext, extensionSettings, saveSetting
             sceneAudio.sweep();
             imageViewer.refresh();
             updateUI();
-        } finally { observe(); }
+        } finally { renderHistory=null;observe(); }
         window.dispatchEvent(new CustomEvent('display-bridge:rendered'));
     }
     function chatAppearance(chat,avatar){

@@ -1,6 +1,6 @@
 # Remaining work
 
-Current baseline: Display Bridge 0.22.0 / V3 Asset Sprites 0.10.0. See the [current audit](../RELEASE-ACCEPTANCE.md) for tested scope.
+Current baseline: Display Bridge 0.22.1 / V3 Asset Sprites 0.10.0. See the [current audit](../RELEASE-ACCEPTANCE.md) for tested scope.
 
 ## Wider card compatibility
 

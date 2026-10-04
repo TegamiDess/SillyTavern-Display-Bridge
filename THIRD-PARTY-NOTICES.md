@@ -2,6 +2,8 @@
 
 The project license applies to original extension code. It does not replace licenses attached to third-party material.
 
+- **Summaryception 23.40.0** — optional modified companion under `optional/Extension-Summaryception`, with original authorship retained (manifest author: Lodactio). Upstream source: https://github.com/vadash/Extension-Summaryception; upstream manifest home: https://github.com/Lodactio/Extension-Summaryception. Distributed with its supplied AGPL v3 LICENSE. Local modifications and installation boundaries are documented in its README. The upstream package.json ISC label conflicted with that LICENSE/README and is corrected in the companion metadata. No upstream cards, personal settings or chat data are bundled.
+
 - **SillyTavern** — host application and browser-test dependencies, AGPLv3. The test server reads the user's separately installed SillyTavern checkout; the host is not bundled here. https://github.com/SillyTavern/SillyTavern
 - **RisuAI / risup format references** — the bounded module reader uses legacy Risu module framing and the RPack byte-permutation table. See the format-source links in V3 Asset Sprites' IMPORT-NOTES.md and comments in risu-module.js. The external risup CLI is not bundled. https://github.com/kwaroran/RisuAI and https://github.com/rescuetycoon/risup
 - **Card display references** — technical fixtures/styles include source-derived display patterns. Their inclusion does not assert authorship or ownership of the original cards. Imported user cards and their assets are not covered by the project's licensing grant.
